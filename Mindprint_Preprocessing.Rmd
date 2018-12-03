@@ -1,0 +1,1101 @@
+---
+title: "Mindprint"
+author: "Felicia Zhang"
+date: '2018-07-25'
+output: pdf_document
+toc: yes
+toc_depth: 2
+fontsize: 12pt
+fig_height: 5
+fig_width: 7
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+## LOAD PACKAGES
+
+library(ggplot2) 
+library(zoo)
+library(reshape)
+library(plyr)
+library(dplyr)
+library(scales) 
+library(data.table)
+library(signal)
+library(matrixStats)
+library(lme4)
+library(arm)
+library(broom)
+library(tidyr)
+library(wesanderson)
+library(readxl)    
+library(extrafont)
+library(glmnet)
+library(GGally)
+library(readxl)
+library(corrplot)
+```
+
+```{r setup, include=FALSE, warning=FALSE}
+## LOAD ACT DATA
+
+# Load multiple excel sheets at once
+
+# get names of sheets
+sheets <- readxl::excel_sheets("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/ACTData_112418.xlsx")
+
+# load in excel data as 1 big file
+lst <- lapply(sheets, function(sheet) 
+  readxl::read_excel("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/ACTData_112418.xlsx", sheet = sheet)
+)
+
+# prepare names
+names(lst) <- sheets
+
+# turn each sheet into DF
+list2env(lst, envir = .GlobalEnv)
+
+# the one called the Combo is a mixture of SAT and ACT questions.
+# 0 = incorrect, 1 = correct, 2 = skip
+
+# 9 versions of test: 70A, 70C, 70G, 71A, 71C, 71E, 72C, 72E, Combo
+# 4 subjects: English, Math, Reading, Science
+```
+
+```{r setup, include=FALSE, warning=FALSE}
+## LOAD MINDPRINT DATA
+
+MindprintDF <- read_xlsx("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/MindprintData_112418.xlsx")
+
+## LOAD CONVERT RAW DATA TO SCALED DATA TABLES
+
+# Load multiple excel sheets at once
+
+# get names of sheets
+sheets <- readxl::excel_sheets("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/ConvertRawToScaledScores.xlsx")
+
+# load in excel data as 1 big file
+lst <- lapply(sheets, function(sheet) 
+  readxl::read_excel("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/ConvertRawToScaledScores.xlsx", sheet = sheet)
+)
+
+# prepare names
+names(lst) <- sheets
+
+# turn each sheet into DF
+list2env(lst, envir = .GlobalEnv)
+
+#difference between 70C, 72C, Combo v2.4: three different tests based on where we had sufficient student data, noting the one called the Combo is a mixture of SAT and ACT questions.
+```
+
+Hypotheses of which skills are key drivers by ACT subject test
+
+a.	English – Primary would be Verbal Reasoning
+i.	Usage Mechanics (UM) (grammar and punctuation): Verbal Reasoning and/or Verbal Memory and Visual Memory
+ii.	Rhetorical analysis (RH): Verbal Reasoning and Abstract Reasoning
+
+b.	Math – Primary would be abstract reasoning
+i.	Algebra: Abstract Reasoning, Visual Memory and maybe Verbal Reasoning
+ii.	Geometry: Abstract Reasoning, Visual Memory, Spatial Perception
+iii.Advanced Algebra and Geometry: Abstract Reasoning, Spatial Perception and Flexible Thinking
+
+c.	Reading – Primary would be verbal reasoning but maybe working memory
+i.	Natural sciences: Verbal Reasoning and Abstract Reasoning
+ii.	Others: Verbal Reasoning and Flexible Thinking for the hardest questions/inferencing
+
+d.	Science – Could be all three reasoning: Verbal, Abstract and Spatial
+i.	Interpreting Graphs, Figures & Tables: Abstract and Spatial
+
+```{r setup, include=FALSE, warning=FALSE}
+# For each ACT version, count number of questions for each section
+# 70A, 70C, 70G, 71A, 71C, 71E, 72C, 72E, 72F, 72G, 73E, 74F, 74H, Combo 
+
+length(which(ACT70A[2,]=="English")) #75
+length(which(ACT70A[2,]=="Math")) #60 
+length(which(ACT70A[2,]=="Reading")) #40
+length(which(ACT70A[2,]=="Science")) #40
+
+length(which(ACT70C[3,]=="English")) #75
+length(which(ACT70C[3,]=="Math")) #60
+length(which(ACT70C[3,]=="Reading")) #40
+length(which(ACT70C[3,]=="Science")) #40
+
+length(which(ACT70G[3,]=="English")) #75
+length(which(ACT70G[3,]=="Math")) #60
+length(which(ACT70G[3,]=="Reading")) #40
+length(which(ACT70G[3,]=="Science")) #40
+
+length(which(ACT71A[2,]=="English")) #75
+length(which(ACT71A[2,]=="Math")) #60
+length(which(ACT71A[2,]=="Reading")) #40
+length(which(ACT71A[2,]=="Science")) #40
+
+length(which(ACT71C[2,]=="English")) #75
+length(which(ACT71C[2,]=="Math")) #60
+length(which(ACT71C[2,]=="Reading")) #40
+length(which(ACT71C[2,]=="Science")) #40
+
+length(which(ACT71E[2,]=="English")) #75
+length(which(ACT71E[2,]=="Math")) #60
+length(which(ACT71E[2,]=="Reading")) #40
+length(which(ACT71E[2,]=="Science")) #40
+
+length(which(ACT72C[3,]=="English")) #75
+length(which(ACT72C[3,]=="Math")) #60
+length(which(ACT72C[3,]=="Reading")) #40
+length(which(ACT72C[3,]=="Science")) #40
+
+length(which(ACT72E[3,]=="English")) #75
+length(which(ACT72E[3,]=="Math")) #60
+length(which(ACT72E[3,]=="Reading")) #40
+length(which(ACT72E[3,]=="Science")) #40
+
+length(which(ACT74F[2,]=="English")) #75
+length(which(ACT74F[2,]=="Math")) #60
+length(which(ACT74F[2,]=="Reading")) #40
+length(which(ACT74F[2,]=="Science")) #40
+
+# For Combo test calculate standard score using both ACT and SAT test
+length(which(ACTCombo2.4[3,]=="English")) #39
+length(which(ACTCombo2.4[3,]=="Math")) #61
+length(which(ACTCombo2.4[3,]=="Reading")) #50
+length(which(ACTCombo2.4[3,]=="Science")) #24
+length(which(ACTCombo2.4[3,]=="Writing")) #22
+
+# How many questions for each subsection...each test has different number of questions and topics for subsection...
+# length(which(ACT72C[3,]=="English" & ACT72C[4,]=="UM")) #51
+# length(which(ACT72C[3,]=="English" & ACT72C[4,]=="RH")) #24
+# length(which(ACT72C[3,]=="Math" & ACT72C[4,]=="Pre-Algebra")) #24
+# length(which(ACT72C[3,]=="Math" & ACT72C[4,]=="Plane Geometry/Trigonometry")) #18
+# length(which(ACT72C[3,]=="Math" & ACT72C[4,]=="Interm Alg/Cood Geometry")) #18
+# length(which(ACT72C[3,]=="Reading" & ACT72C[4,]=="Art/Literature")) #20
+# length(which(ACT72C[3,]=="Reading" & ACT72C[4,]=="Social Studies/Sciences")) #20
+# 
+# length(which(ACT71C[2,]=="English" & ACT71C[3,]=="UM")) #55
+# length(which(ACT71C[2,]=="English" & ACT71C[3,]=="RH")) #20
+# length(which(ACT71C[2,]=="Math" & ACT71C[3,]=="EA")) #19
+# length(which(ACT71C[2,]=="Math" & ACT71C[3,]=="GT")) #20
+# length(which(ACT71C[2,]=="Math" & ACT71C[3,]=="AG")) #21
+# length(which(ACT71C[2,]=="Reading" & ACT71C[3,]=="Humanities")) #10
+# length(which(ACT71C[2,]=="Reading" & ACT71C[3,]=="Natural Science")) #10
+# length(which(ACT71C[2,]=="Reading" & ACT71C[3,]=="Prose")) #10
+# length(which(ACT71C[2,]=="Reading" & ACT71C[3,]=="Social Science")) #10
+```
+
+```{r setup, include=FALSE, warning=FALSE}
+# Combine these DFs: 70C, 70G, 71A, 71C, 71E, 72C, 72E, 72F, 72G, 73E, 74F, 74H, Combo 
+# 
+# # Combine test information together
+# # 70C
+# foo <- ACT70C[1:5,]
+# foo[1,] <- "70C"
+# foo[1,1] <- "Test"
+# foo[2,1] <- "Test_Question"
+# foo[3,1] <- "Test_Section"
+# foo[4,1] <- "Test_Subsection"
+# foo[5,1] <- "Difficulty"
+# foo <- transpose(foo)
+# colnames(foo) <- foo[1, ]
+# ACTinfo <- foo[-1, ]
+# 
+# # 70G
+# foo <- ACT70G[1:5,]
+# foo[1,] <- "70G"
+# foo[1,1] <- "Test"
+# foo[2,1] <- "Test_Question"
+# foo[3,1] <- "Test_Section"
+# foo[4,1] <- "Test_Subsection"
+# foo[5,1] <- "Difficulty"
+# foo <- transpose(foo)
+# colnames(foo) <- foo[1, ]
+# foo <- foo[-1, ]
+# ACTinfo <- rbind(ACTinfo, foo)
+# 
+# # 71A
+# foo <- ACT71A[1:4,]
+# newrow <- foo[1,]
+# foo <- rbind(newrow,foo)
+# foo[1,] <- "71A"
+# foo[1,1] <- "Test"
+# foo[2,1] <- "Test_Question"
+# foo[3,1] <- "Test_Section"
+# foo[4,1] <- "Test_Subsection"
+# foo[5,1] <- "Difficulty"
+# foo <- transpose(foo)
+# colnames(foo) <- foo[1, ]
+# foo <- foo[-1, ]
+# ACTinfo <- rbind(ACTinfo, foo)
+# 
+# # 71C
+# foo <- ACT71C[1:4,]
+# newrow <- foo[1,]
+# foo <- rbind(newrow,foo)
+# foo[1,] <- "71C"
+# foo[1,1] <- "Test"
+# foo[2,1] <- "Test_Question"
+# foo[3,1] <- "Test_Section"
+# foo[4,1] <- "Test_Subsection"
+# foo[5,1] <- "Difficulty"
+# foo <- transpose(foo)
+# colnames(foo) <- foo[1, ]
+# foo <- foo[-1, ]
+# ACTinfo <- rbind(ACTinfo, foo)
+# 
+# # 71E
+# foo <- ACT71E[1:4,]
+# newrow <- foo[1,]
+# foo <- rbind(newrow,foo)
+# foo[1,] <- "71E"
+# foo[1,1] <- "Test"
+# foo[2,1] <- "Test_Question"
+# foo[3,1] <- "Test_Section"
+# foo[4,1] <- "Test_Subsection"
+# foo[5,1] <- "Difficulty"
+# foo <- transpose(foo)
+# colnames(foo) <- foo[1, ]
+# foo <- foo[-1, ]
+# ACTinfo <- rbind(ACTinfo, foo)
+# 
+# # 72C
+# foo <- ACT72C[1:5,]
+# foo[1,] <- "72C"
+# foo[1,1] <- "Test"
+# foo[2,1] <- "Test_Question"
+# foo[3,1] <- "Test_Section"
+# foo[4,1] <- "Test_Subsection"
+# foo[5,1] <- "Difficulty"
+# foo <- transpose(foo)
+# colnames(foo) <- foo[1, ]
+# foo <- foo[-1, ]
+# ACTinfo <- rbind(ACTinfo, foo)
+# 
+# # 72E
+# foo <- ACT72E[1:5,]
+# foo[1,] <- "72E"
+# foo[1,1] <- "Test"
+# foo[2,1] <- "Test_Question"
+# foo[3,1] <- "Test_Section"
+# foo[4,1] <- "Test_Subsection"
+# foo[5,1] <- "Difficulty"
+# foo <- transpose(foo)
+# colnames(foo) <- foo[1, ]
+# foo <- foo[-1, ]
+# ACTinfo <- rbind(ACTinfo, foo)
+# 
+# # 74F
+# foo <- ACT74F[1:4,]
+# newrow <- foo[1,]
+# foo <- rbind(newrow,foo)
+# foo[1,] <- "74F"
+# foo[1,1] <- "Test"
+# foo[2,1] <- "Test_Question"
+# foo[3,1] <- "Test_Section"
+# foo[4,1] <- "Test_Subsection"
+# foo[5,1] <- "Difficulty"
+# foo <- transpose(foo)
+# colnames(foo) <- foo[1, ]
+# foo <- foo[-1, ]
+# ACTinfo <- rbind(ACTinfo, foo)
+# 
+# # Combo
+# foo <- ACTCombo2.4[1:5,]
+# foo[1,] <- "Combo"
+# foo[1,1] <- "Test"
+# foo[2,1] <- "Test_Question"
+# foo[3,1] <- "Test_Section"
+# foo[4,1] <- "Test_Subsection"
+# foo[5,1] <- "Difficulty"
+# foo <- transpose(foo)
+# colnames(foo) <- foo[1, ]
+# foo <- foo[-1, ]
+# ACTinfo <- rbind(ACTinfo, foo)
+# 
+# # Convert to numeric
+# ACTinfo$Test_Question <- as.numeric(as.character(ACTinfo$Test_Question))
+# ACTinfo$Difficulty <- as.numeric(as.character(ACTinfo$Difficulty))
+# 
+# # Add in TestQuestion2 which is 1:215
+# ACTinfo$Test_Question2 <- 0
+# ACTinfo$Test_Question2[1:1720] <- rep(1:215, times=8)
+# # Add in TestQuestion2 separately for combo since they don't have the same number of questions
+# ACTinfo$Test_Question2[1721:length(ACTinfo$Test_Question)] <- 1:length(foo$Test)
+```
+
+## Convert ACT raw scores to scaled scores
+### Version: 70C
+```{r setup, include=FALSE, warning=FALSE}
+# Get raw scores
+foo <- ACT70C[-c(1:7), ]
+colnames(foo) <- c(1,1:215)
+colnames(foo)[1] <- "customer_id"
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+foo$ACTversion <- "70C"
+
+# replace skipped questions with NA
+foo[foo==2] <- NA
+
+foo$EngRaw <- rowSums(foo[,2:76], na.rm = TRUE)
+foo$MathRaw <- rowSums(foo[,77:136], na.rm = TRUE)
+foo$ReadingRaw <- rowSums(foo[,137:176], na.rm = TRUE)
+foo$ScienceRaw <- rowSums(foo[,177:216], na.rm = TRUE)
+
+# replace 0 with NA
+foo$EngRaw[foo$EngRaw==0] <- NA
+foo$MathRaw[foo$MathRaw==0] <- NA
+foo$ReadingRaw[foo$ReadingRaw==0] <- NA
+foo$ScienceRaw[foo$ScienceRaw==0] <- NA
+
+# remove columns
+foo <- foo[,-(2:216)]
+
+# create columns
+foo$EngScaledScore <- 0
+foo$MathScaledScore <- 0
+foo$ReadingScaledScore <- 0
+foo$ScienceScaledScore <- 0
+
+# convert English scores
+for (i in 1:length(foo$customer_id)){
+  foo$EngScaledScore[i] <- `70C`$English_Scaled_Score[`70C`$English_Raw_Score==foo$EngRaw[i]]
+}
+
+# convert Math scores
+for (i in 1:length(foo$customer_id)){
+  foo$MathScaledScore[i] <- `70C`$Math_Scaled_Score[`70C`$Math_Raw_Score==foo$MathRaw[i]]
+}
+
+# convert Reading scores
+for (i in 1:length(foo$customer_id)){
+  foo$ReadingScaledScore[i] <- `70C`$Reading_Scaled_Score[`70C`$Reading_Raw_Score==foo$ReadingRaw[i]]
+}
+
+# convert Science scores
+for (i in 1:length(foo$customer_id)){
+  foo$ScienceScaledScore[i] <- `70C`$Science_Scaled_Score[`70C`$Science_Raw_Score==foo$ScienceRaw[i]]
+}
+
+ACTscaledscores <- foo
+```
+
+### Version: 70G
+```{r}
+# Get raw scores
+foo <- ACT70G[-c(1:6), ]
+colnames(foo) <- c(1,1:215)
+colnames(foo)[1] <- "customer_id"
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+foo$ACTversion <- "70G"
+
+# replace skipped questions with NA
+foo[foo==2] <- NA
+
+foo$EngRaw <- rowSums(foo[,2:76], na.rm = TRUE)
+foo$MathRaw <- rowSums(foo[,77:136], na.rm = TRUE)
+foo$ReadingRaw <- rowSums(foo[,137:176], na.rm = TRUE)
+foo$ScienceRaw <- rowSums(foo[,177:216], na.rm = TRUE)
+
+# replace 0 with NA
+foo$EngRaw[foo$EngRaw==0] <- NA
+foo$MathRaw[foo$MathRaw==0] <- NA
+foo$ReadingRaw[foo$ReadingRaw==0] <- NA
+foo$ScienceRaw[foo$ScienceRaw==0] <- NA
+
+# remove columns
+foo <- foo[,-(2:216)]
+
+# create columns
+foo$EngScaledScore <- 0
+foo$MathScaledScore <- 0
+foo$ReadingScaledScore <- 0
+foo$ScienceScaledScore <- 0
+
+# convert English scores
+for (i in 1:length(foo$customer_id)){
+  foo$EngScaledScore[i] <- `70G`$English_Scaled_Score[`70G`$English_Raw_Score==foo$EngRaw[i]]
+}
+
+# convert Math scores
+for (i in 1:length(foo$customer_id)){
+  foo$MathScaledScore[i] <- `70G`$Math_Scaled_Score[`70G`$Math_Raw_Score==foo$MathRaw[i]]
+}
+
+# convert Reading scores
+for (i in 1:length(foo$customer_id)){
+  foo$ReadingScaledScore[i] <- `70G`$Reading_Scaled_Score[`70G`$Reading_Raw_Score==foo$ReadingRaw[i]]
+}
+
+# convert Science scores
+for (i in 1:length(foo$customer_id)){
+  foo$ScienceScaledScore[i] <- `70G`$Science_Scaled_Score[`70G`$Science_Raw_Score==foo$ScienceRaw[i]]
+}
+
+ACTscaledscores <- rbind(ACTscaledscores, foo)
+```
+
+### Version: 71A
+```{r}
+# Get raw scores
+foo <- ACT71A[-c(1:5), ]
+colnames(foo) <- c(1,1:215)
+colnames(foo)[1] <- "customer_id"
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+foo$ACTversion <- "71A"
+
+# replace skipped questions with NA
+foo[foo==2] <- NA
+
+foo$EngRaw <- rowSums(foo[,2:76], na.rm = TRUE)
+foo$MathRaw <- rowSums(foo[,77:136], na.rm = TRUE)
+foo$ReadingRaw <- rowSums(foo[,137:176], na.rm = TRUE)
+foo$ScienceRaw <- rowSums(foo[,177:216], na.rm = TRUE)
+
+# replace 0 with NA
+foo$EngRaw[foo$EngRaw==0] <- NA
+foo$MathRaw[foo$MathRaw==0] <- NA
+foo$ReadingRaw[foo$ReadingRaw==0] <- NA
+foo$ScienceRaw[foo$ScienceRaw==0] <- NA
+
+# remove columns
+foo <- foo[,-(2:216)]
+
+# create columns
+foo$EngScaledScore <- 0
+foo$MathScaledScore <- 0
+foo$ReadingScaledScore <- 0
+foo$ScienceScaledScore <- 0
+
+# convert English scores
+for (i in 1:length(foo$customer_id)){
+  foo$EngScaledScore[i] <- `71A`$English_Scaled_Score[`71A`$English_Raw_Score==foo$EngRaw[i]]
+}
+
+# convert Math scores
+for (i in 1:length(foo$customer_id)){
+  foo$MathScaledScore[i] <- `71A`$Math_Scaled_Score[`71A`$Math_Raw_Score==foo$MathRaw[i]]
+}
+
+# convert Reading scores
+for (i in 1:length(foo$customer_id)){
+  foo$ReadingScaledScore[i] <- `71A`$Reading_Scaled_Score[`71A`$Reading_Raw_Score==foo$ReadingRaw[i]]
+}
+
+# convert Science scores
+for (i in 1:length(foo$customer_id)){
+  foo$ScienceScaledScore[i] <- `71A`$Science_Scaled_Score[`71A`$Science_Raw_Score==foo$ScienceRaw[i]]
+}
+
+ACTscaledscores <- rbind(ACTscaledscores, foo)
+```
+
+### Version: 71C
+```{r}
+# Get raw scores
+foo <- ACT71C[-c(1:5), ]
+colnames(foo) <- c(1,1:215)
+colnames(foo)[1] <- "customer_id"
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+foo$ACTversion <- "71C"
+
+# replace skipped questions with NA
+foo[foo==2] <- NA
+
+foo$EngRaw <- rowSums(foo[,2:76], na.rm = TRUE)
+foo$MathRaw <- rowSums(foo[,77:136], na.rm = TRUE)
+foo$ReadingRaw <- rowSums(foo[,137:176], na.rm = TRUE)
+foo$ScienceRaw <- rowSums(foo[,177:216], na.rm = TRUE)
+
+# replace 0 with NA
+foo$EngRaw[foo$EngRaw==0] <- NA
+foo$MathRaw[foo$MathRaw==0] <- NA
+foo$ReadingRaw[foo$ReadingRaw==0] <- NA
+foo$ScienceRaw[foo$ScienceRaw==0] <- NA
+
+# remove columns
+foo <- foo[,-(2:216)]
+
+# create columns
+foo$EngScaledScore <- 0
+foo$MathScaledScore <- 0
+foo$ReadingScaledScore <- 0
+foo$ScienceScaledScore <- 0
+
+# convert English scores
+for (i in 1:length(foo$customer_id)){
+  foo$EngScaledScore[i] <- `71C`$English_Scaled_Score[`71C`$English_Raw_Score==foo$EngRaw[i]]
+}
+
+# convert Math scores
+for (i in 1:length(foo$customer_id)){
+  foo$MathScaledScore[i] <- `71C`$Math_Scaled_Score[`71C`$Math_Raw_Score==foo$MathRaw[i]]
+}
+
+# convert Reading scores
+for (i in 1:length(foo$customer_id)){
+  foo$ReadingScaledScore[i] <- `71C`$Reading_Scaled_Score[`71C`$Reading_Raw_Score==foo$ReadingRaw[i]]
+}
+
+# convert Science scores
+for (i in 1:length(foo$customer_id)){
+  foo$ScienceScaledScore[i] <- `71C`$Science_Scaled_Score[`71C`$Science_Raw_Score==foo$ScienceRaw[i]]
+}
+
+ACTscaledscores <- rbind(ACTscaledscores, foo)
+```
+
+### Version: 71E
+``` {r}
+# Get raw scores
+foo <- ACT71E[-c(1:5), ]
+colnames(foo) <- c(1,1:215)
+colnames(foo)[1] <- "customer_id"
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+foo$ACTversion <- "71E"
+
+# replace skipped questions with NA
+foo[foo==2] <- NA
+
+foo$EngRaw <- rowSums(foo[,2:76], na.rm = TRUE)
+foo$MathRaw <- rowSums(foo[,77:136], na.rm = TRUE)
+foo$ReadingRaw <- rowSums(foo[,137:176], na.rm = TRUE)
+foo$ScienceRaw <- rowSums(foo[,177:216], na.rm = TRUE)
+
+# replace 0 with NA
+foo$EngRaw[foo$EngRaw==0] <- NA
+foo$MathRaw[foo$MathRaw==0] <- NA
+foo$ReadingRaw[foo$ReadingRaw==0] <- NA
+foo$ScienceRaw[foo$ScienceRaw==0] <- NA
+
+# remove columns
+foo <- foo[,-(2:216)]
+
+# create columns
+foo$EngScaledScore <- 0
+foo$MathScaledScore <- 0
+foo$ReadingScaledScore <- 0
+foo$ScienceScaledScore <- 0
+
+# convert English scores
+for (i in 1:length(foo$customer_id)){
+  foo$EngScaledScore[i] <- `71E`$English_Scaled_Score[`71E`$English_Raw_Score==foo$EngRaw[i]]
+}
+
+# convert Math scores
+for (i in 1:length(foo$customer_id)){
+  foo$MathScaledScore[i] <- `71E`$Math_Scaled_Score[`71E`$Math_Raw_Score==foo$MathRaw[i]]
+}
+
+# convert Reading scores
+for (i in 1:length(foo$customer_id)){
+  foo$ReadingScaledScore[i] <- `71E`$Reading_Scaled_Score[`71E`$Reading_Raw_Score==foo$ReadingRaw[i]]
+}
+
+# convert Science scores
+for (i in 1:length(foo$customer_id)){
+  foo$ScienceScaledScore[i] <- `71E`$Science_Scaled_Score[`71E`$Science_Raw_Score==foo$ScienceRaw[i]]
+}
+
+ACTscaledscores <- rbind(ACTscaledscores, foo)
+```
+
+### Version: 72C
+```{r}
+# Get raw scores
+foo <- ACT72C[-c(1:6), ]
+colnames(foo) <- c(1,1:215)
+colnames(foo)[1] <- "customer_id"
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+foo$ACTversion <- "72C"
+
+# replace skipped questions with NA
+foo[foo==2] <- NA
+
+foo$EngRaw <- rowSums(foo[,2:76], na.rm = TRUE)
+foo$MathRaw <- rowSums(foo[,77:136], na.rm = TRUE)
+foo$ReadingRaw <- rowSums(foo[,137:176], na.rm = TRUE)
+foo$ScienceRaw <- rowSums(foo[,177:216], na.rm = TRUE)
+
+# replace 0 with NA
+foo$EngRaw[foo$EngRaw==0] <- NA
+foo$MathRaw[foo$MathRaw==0] <- NA
+foo$ReadingRaw[foo$ReadingRaw==0] <- NA
+foo$ScienceRaw[foo$ScienceRaw==0] <- NA
+
+# remove columns
+foo <- foo[,-(2:216)]
+
+# create columns
+foo$EngScaledScore <- 0
+foo$MathScaledScore <- 0
+foo$ReadingScaledScore <- 0
+foo$ScienceScaledScore <- 0
+
+# convert English scores
+for (i in 1:length(foo$customer_id)){
+  foo$EngScaledScore[i] <- `72C`$English_Scaled_Score[`72C`$English_Raw_Score==foo$EngRaw[i]]
+}
+
+# convert Math scores
+for (i in 1:length(foo$customer_id)){
+  foo$MathScaledScore[i] <- `72C`$Math_Scaled_Score[`72C`$Math_Raw_Score==foo$MathRaw[i]]
+}
+
+# convert Reading scores
+for (i in 1:length(foo$customer_id)){
+  foo$ReadingScaledScore[i] <- `72C`$Reading_Scaled_Score[`72C`$Reading_Raw_Score==foo$ReadingRaw[i]]
+}
+
+# convert Science scores
+for (i in 1:length(foo$customer_id)){
+  foo$ScienceScaledScore[i] <- `72C`$Science_Scaled_Score[`72C`$Science_Raw_Score==foo$ScienceRaw[i]]
+}
+
+ACTscaledscores <- rbind(ACTscaledscores, foo)
+```
+
+### Version: 72E
+```{r}
+# Get raw scores
+foo <- ACT72E[-c(1:6), ]
+colnames(foo) <- c(1,1:215)
+colnames(foo)[1] <- "customer_id"
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+foo$ACTversion <- "72E"
+
+# replace skipped questions with NA
+foo[foo==2] <- NA
+
+foo$EngRaw <- rowSums(foo[,2:76], na.rm = TRUE)
+foo$MathRaw <- rowSums(foo[,77:136], na.rm = TRUE)
+foo$ReadingRaw <- rowSums(foo[,137:176], na.rm = TRUE)
+foo$ScienceRaw <- rowSums(foo[,177:216], na.rm = TRUE)
+
+# replace 0 with NA
+foo$EngRaw[foo$EngRaw==0] <- NA
+foo$MathRaw[foo$MathRaw==0] <- NA
+foo$ReadingRaw[foo$ReadingRaw==0] <- NA
+foo$ScienceRaw[foo$ScienceRaw==0] <- NA
+
+# remove columns
+foo <- foo[,-(2:216)]
+
+# create columns
+foo$EngScaledScore <- 0
+foo$MathScaledScore <- 0
+foo$ReadingScaledScore <- 0
+foo$ScienceScaledScore <- 0
+
+# convert English scores
+for (i in 1:length(foo$customer_id)){
+  foo$EngScaledScore[i] <- `72E`$English_Scaled_Score[`72E`$English_Raw_Score==foo$EngRaw[i]]
+}
+
+# convert Math scores
+for (i in 1:length(foo$customer_id)){
+  foo$MathScaledScore[i] <- `72E`$Math_Scaled_Score[`72E`$Math_Raw_Score==foo$MathRaw[i]]
+}
+
+# convert Reading scores
+for (i in 1:length(foo$customer_id)){
+  foo$ReadingScaledScore[i] <- `72E`$Reading_Scaled_Score[`72E`$Reading_Raw_Score==foo$ReadingRaw[i]]
+}
+
+# convert Science scores
+for (i in 1:length(foo$customer_id)){
+  foo$ScienceScaledScore[i] <- `72E`$Science_Scaled_Score[`72E`$Science_Raw_Score==foo$ScienceRaw[i]]
+}
+
+ACTscaledscores <- rbind(ACTscaledscores, foo)
+```
+
+### Version: 72F
+```{r}
+# Get raw scores
+foo <- ACT72F[-c(1:4), ]
+colnames(foo) <- c(1,1:215)
+colnames(foo)[1] <- "customer_id"
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+foo$ACTversion <- "72F"
+
+# replace skipped questions with NA
+foo[foo==2] <- NA
+
+foo$EngRaw <- rowSums(foo[,2:76], na.rm = TRUE)
+foo$MathRaw <- rowSums(foo[,77:136], na.rm = TRUE)
+foo$ReadingRaw <- rowSums(foo[,137:176], na.rm = TRUE)
+foo$ScienceRaw <- rowSums(foo[,177:216], na.rm = TRUE)
+
+# replace 0 with NA
+foo$EngRaw[foo$EngRaw==0] <- NA
+foo$MathRaw[foo$MathRaw==0] <- NA
+foo$ReadingRaw[foo$ReadingRaw==0] <- NA
+foo$ScienceRaw[foo$ScienceRaw==0] <- NA
+
+# remove columns
+foo <- foo[,-(2:216)]
+
+# create columns
+foo$EngScaledScore <- 0
+foo$MathScaledScore <- 0
+foo$ReadingScaledScore <- 0
+foo$ScienceScaledScore <- 0
+
+# convert English scores
+for (i in 1:length(foo$customer_id)){
+  foo$EngScaledScore[i] <- `72F`$English_Scaled_Score[`72F`$English_Raw_Score==foo$EngRaw[i]]
+}
+
+# convert Math scores
+for (i in 1:length(foo$customer_id)){
+  foo$MathScaledScore[i] <- `72F`$Math_Scaled_Score[`72F`$Math_Raw_Score==foo$MathRaw[i]]
+}
+
+# convert Reading scores
+for (i in 1:length(foo$customer_id)){
+  foo$ReadingScaledScore[i] <- `72F`$Reading_Scaled_Score[`72F`$Reading_Raw_Score==foo$ReadingRaw[i]]
+}
+
+# convert Science scores
+for (i in 1:length(foo$customer_id)){
+  foo$ScienceScaledScore[i] <- `72F`$Science_Scaled_Score[`72F`$Science_Raw_Score==foo$ScienceRaw[i]]
+}
+
+ACTscaledscores <- rbind(ACTscaledscores, foo)
+```
+
+### Version: 72G
+```{r}
+# Get raw scores
+foo <- ACT72G[-c(1:4), ]
+colnames(foo) <- c(1,1:215)
+colnames(foo)[1] <- "customer_id"
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+foo$ACTversion <- "72G"
+
+# replace skipped questions with NA
+foo[foo==2] <- NA
+
+foo$EngRaw <- rowSums(foo[,2:76], na.rm = TRUE)
+foo$MathRaw <- rowSums(foo[,77:136], na.rm = TRUE)
+foo$ReadingRaw <- rowSums(foo[,137:176], na.rm = TRUE)
+foo$ScienceRaw <- rowSums(foo[,177:216], na.rm = TRUE)
+
+# replace 0 with NA
+foo$EngRaw[foo$EngRaw==0] <- NA
+foo$MathRaw[foo$MathRaw==0] <- NA
+foo$ReadingRaw[foo$ReadingRaw==0] <- NA
+foo$ScienceRaw[foo$ScienceRaw==0] <- NA
+
+# remove columns
+foo <- foo[,-(2:216)]
+
+# create columns
+foo$EngScaledScore <- 0
+foo$MathScaledScore <- 0
+foo$ReadingScaledScore <- 0
+foo$ScienceScaledScore <- 0
+
+# convert English scores
+for (i in 1:length(foo$customer_id)){
+  foo$EngScaledScore[i] <- `72G`$English_Scaled_Score[`72G`$English_Raw_Score==foo$EngRaw[i]]
+}
+
+# convert Math scores
+for (i in 1:length(foo$customer_id)){
+  foo$MathScaledScore[i] <- `72G`$Math_Scaled_Score[`72G`$Math_Raw_Score==foo$MathRaw[i]]
+}
+
+# convert Reading scores
+for (i in 1:length(foo$customer_id)){
+  foo$ReadingScaledScore[i] <- `72G`$Reading_Scaled_Score[`72G`$Reading_Raw_Score==foo$ReadingRaw[i]]
+}
+
+# convert Science scores
+for (i in 1:length(foo$customer_id)){
+  foo$ScienceScaledScore[i] <- `72G`$Science_Scaled_Score[`72G`$Science_Raw_Score==foo$ScienceRaw[i]]
+}
+
+ACTscaledscores <- rbind(ACTscaledscores, foo)
+```
+
+### Version: 73E
+```{r}
+# Get raw scores
+foo <- ACT73E[-c(1:4), ]
+colnames(foo) <- c(1,1:215)
+colnames(foo)[1] <- "customer_id"
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+foo$ACTversion <- "73E"
+
+# replace skipped questions with NA
+foo[foo==2] <- NA
+
+foo$EngRaw <- rowSums(foo[,2:76], na.rm = TRUE)
+foo$MathRaw <- rowSums(foo[,77:136], na.rm = TRUE)
+foo$ReadingRaw <- rowSums(foo[,137:176], na.rm = TRUE)
+foo$ScienceRaw <- rowSums(foo[,177:216], na.rm = TRUE)
+
+# replace 0 with NA
+foo$EngRaw[foo$EngRaw==0] <- NA
+foo$MathRaw[foo$MathRaw==0] <- NA
+foo$ReadingRaw[foo$ReadingRaw==0] <- NA
+foo$ScienceRaw[foo$ScienceRaw==0] <- NA
+
+# remove columns
+foo <- foo[,-(2:216)]
+
+# create columns
+foo$EngScaledScore <- 0
+foo$MathScaledScore <- 0
+foo$ReadingScaledScore <- 0
+foo$ScienceScaledScore <- 0
+
+# convert English scores
+for (i in 1:length(foo$customer_id)){
+  foo$EngScaledScore[i] <- `73E`$English_Scaled_Score[`73E`$English_Raw_Score==foo$EngRaw[i]]
+}
+
+# convert Math scores
+for (i in 1:length(foo$customer_id)){
+  foo$MathScaledScore[i] <- `73E`$Math_Scaled_Score[`73E`$Math_Raw_Score==foo$MathRaw[i]]
+}
+
+# convert Reading scores
+for (i in 1:length(foo$customer_id)){
+  foo$ReadingScaledScore[i] <- `73E`$Reading_Scaled_Score[`73E`$Reading_Raw_Score==foo$ReadingRaw[i]]
+}
+
+# convert Science scores
+for (i in 1:length(foo$customer_id)){
+  foo$ScienceScaledScore[i] <- `73E`$Science_Scaled_Score[`73E`$Science_Raw_Score==foo$ScienceRaw[i]]
+}
+
+ACTscaledscores <- rbind(ACTscaledscores, foo)
+```
+
+### Version: 74F
+```{r}
+# Get raw scores
+foo <- ACT74F[-c(1:5), ]
+colnames(foo) <- c(1,1:215)
+colnames(foo)[1] <- "customer_id"
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+foo$ACTversion <- "74F"
+
+# replace skipped questions with NA
+foo[foo==2] <- NA
+
+foo$EngRaw <- rowSums(foo[,2:76], na.rm = TRUE)
+foo$MathRaw <- rowSums(foo[,77:136], na.rm = TRUE)
+foo$ReadingRaw <- rowSums(foo[,137:176], na.rm = TRUE)
+foo$ScienceRaw <- rowSums(foo[,177:216], na.rm = TRUE)
+
+# replace 0 with NA
+foo$EngRaw[foo$EngRaw==0] <- NA
+foo$MathRaw[foo$MathRaw==0] <- NA
+foo$ReadingRaw[foo$ReadingRaw==0] <- NA
+foo$ScienceRaw[foo$ScienceRaw==0] <- NA
+
+# remove columns
+foo <- foo[,-(2:216)]
+
+# create columns
+foo$EngScaledScore <- 0
+foo$MathScaledScore <- 0
+foo$ReadingScaledScore <- 0
+foo$ScienceScaledScore <- 0
+
+# convert English scores
+for (i in 1:length(foo$customer_id)){
+  foo$EngScaledScore[i] <- `74F`$English_Scaled_Score[`74F`$English_Raw_Score==foo$EngRaw[i]]
+}
+
+# convert Math scores
+for (i in 1:length(foo$customer_id)){
+  foo$MathScaledScore[i] <- `74F`$Math_Scaled_Score[`74F`$Math_Raw_Score==foo$MathRaw[i]]
+}
+
+# convert Reading scores
+for (i in 1:length(foo$customer_id)){
+  foo$ReadingScaledScore[i] <- `74F`$Reading_Scaled_Score[`74F`$Reading_Raw_Score==foo$ReadingRaw[i]]
+}
+
+# convert Science scores
+for (i in 1:length(foo$customer_id)){
+  foo$ScienceScaledScore[i] <- `74F`$Science_Scaled_Score[`74F`$Science_Raw_Score==foo$ScienceRaw[i]]
+}
+
+ACTscaledscores <- rbind(ACTscaledscores, foo)
+
+```
+
+### Version: 74H
+```{r}
+# Get raw scores
+foo <- ACT74H[-c(1:4), ]
+colnames(foo) <- c(1,1:215)
+colnames(foo)[1] <- "customer_id"
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+foo$ACTversion <- "74H"
+
+# replace skipped questions with NA
+foo[foo==2] <- NA
+
+foo$EngRaw <- rowSums(foo[,2:76], na.rm = TRUE)
+foo$MathRaw <- rowSums(foo[,77:136], na.rm = TRUE)
+foo$ReadingRaw <- rowSums(foo[,137:176], na.rm = TRUE)
+foo$ScienceRaw <- rowSums(foo[,177:216], na.rm = TRUE)
+
+# replace 0 with NA
+foo$EngRaw[foo$EngRaw==0] <- NA
+foo$MathRaw[foo$MathRaw==0] <- NA
+foo$ReadingRaw[foo$ReadingRaw==0] <- NA
+foo$ScienceRaw[foo$ScienceRaw==0] <- NA
+
+# remove columns
+foo <- foo[,-(2:216)]
+
+# create columns
+foo$EngScaledScore <- 0
+foo$MathScaledScore <- 0
+foo$ReadingScaledScore <- 0
+foo$ScienceScaledScore <- 0
+
+# convert English scores
+for (i in 1:length(foo$customer_id)){
+  foo$EngScaledScore[i] <- `74H`$English_Scaled_Score[`74H`$English_Raw_Score==foo$EngRaw[i]]
+}
+
+# convert Math scores
+for (i in 1:length(foo$customer_id)){
+  foo$MathScaledScore[i] <- `74H`$Math_Scaled_Score[`74H`$Math_Raw_Score==foo$MathRaw[i]]
+}
+
+# convert Reading scores
+for (i in 1:length(foo$customer_id)){
+  foo$ReadingScaledScore[i] <- `74H`$Reading_Scaled_Score[`74H`$Reading_Raw_Score==foo$ReadingRaw[i]]
+}
+
+# convert Science scores
+for (i in 1:length(foo$customer_id)){
+  foo$ScienceScaledScore[i] <- `74H`$Science_Scaled_Score[`74H`$Science_Raw_Score==foo$ScienceRaw[i]]
+}
+
+ACTscaledscores <- rbind(ACTscaledscores, foo)
+```
+
+### Version: ACTCombo
+```{r}
+# Get raw scores
+foo <- ACTCombo2.4[-c(1:6), ]
+colnames(foo) <- c(1,1:196)
+colnames(foo)[1] <- "customer_id"
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+foo$ACTversion <- "Combo"
+
+# replace skipped questions with NA
+foo[foo==2] <- NA
+
+foo$EngRaw <- round(rowSums(foo[,2:40], na.rm = TRUE) / 39 * 100, digits = 0)
+foo$ReadingRaw <- round(rowSums(foo[,c(41:70,123:142)], na.rm = TRUE) / 50 * 100, digits = 0)
+foo$MathRaw <- round(rowSums(foo[,c(71:100,143:173)], na.rm = TRUE) / 61 * 100, digits = 0)
+foo$ScienceRaw <- round(rowSums(foo[,174:197], na.rm = TRUE) / 24 * 100, digits = 0)
+
+# replace 0 with NA
+foo$EngRaw[foo$EngRaw==0] <- NA
+foo$MathRaw[foo$MathRaw==0] <- NA
+foo$ReadingRaw[foo$ReadingRaw==0] <- NA
+foo$ScienceRaw[foo$ScienceRaw==0] <- NA
+
+# remove columns
+foo <- foo[,-(2:197)]
+
+# create columns
+foo$EngScaledScore <- 0
+foo$MathScaledScore <- 0
+foo$ReadingScaledScore <- 0
+foo$ScienceScaledScore <- 0
+
+# convert English scores
+for (i in 1:length(foo$customer_id)){
+  foo$EngScaledScore[i] <- Combo$English_Scaled_Score[Combo$English_Raw_Score==foo$EngRaw[i]]
+}
+
+# convert Math scores
+for (i in 1:length(foo$customer_id)){
+  foo$MathScaledScore[i] <- Combo$Math_Scaled_Score[Combo$Math_Raw_Score==foo$MathRaw[i]]
+}
+
+# convert Reading scores
+for (i in 1:length(foo$customer_id)){
+  foo$ReadingScaledScore[i] <- Combo$Reading_Scaled_Score[Combo$Reading_Raw_Score==foo$ReadingRaw[i]]
+}
+
+# convert Science scores
+for (i in 1:length(foo$customer_id)){
+  foo$ScienceScaledScore[i] <- Combo$Science_Scaled_Score[Combo$Science_Raw_Score==foo$ScienceRaw[i]]
+}
+
+ACTscaledscores <- rbind(ACTscaledscores, foo)
+
+## Merge with Mindprint DF
+MindprintDF_yescombo <- merge(MindprintDF, ACTscaledscores, by = "customer_id")
+
+# save to computer
+write.csv(MindprintDF_yescombo, "Mindprint_ScaledScores_YesCombo.csv", row.names=TRUE) #save to computer
+```
+
+Identify missing data
+```{r}
+# Identify students who are missing Mindprint scores
+for (i in 1:length(ACTscaledscores$customer_id)) {
+  # we have their ACT scores
+  z <- ACTscaledscores$customer_id[i]
+  zz <- which(MindprintDF$customer_id==z)
+  # but not their mindprint scores
+  if (length(zz)==0) {
+    print(paste("Missing", z, "Mindprint score"))
+  }
+}
+
+# Identify students who are missing ACT  scores
+for (i in 1:length(MindprintDF$customer_id)) {
+  # we have their mindprint scores
+  z <- MindprintDF$customer_id[i]
+  zz <- which(ACTscaledscores$customer_id==z)
+  # but not their ACT scores
+  if (length(zz)==0) {
+    print(paste("Missing", z, "ACT score"))
+  }
+}
+
+```
+
+## LOAD SAT DATA
+```{r setup, include=FALSE, warning=FALSE}
+# Load multiple excel sheets at once
+
+# get names of sheets
+sheets <- readxl::excel_sheets("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/SAT_Scores_112718.xlsx")
+
+# load in excel data as 1 big file
+lst <- lapply(sheets, function(sheet) 
+  readxl::read_excel("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/SAT_Scores_112718.xlsx", sheet = sheet)
+)
+
+# prepare names
+names(lst) <- sheets
+
+# turn each sheet into DF
+list2env(lst, envir = .GlobalEnv)
+
+# combine all SAT scores
+SATscaledscores <- rbind(Manjri, Maureen, APlus, Paidosh, SmartyPrep)
+
+## Merge with Mindprint DF
+MindprintDF <- merge(Mindprint, SATscaledscores, by = "customer_id")
+
+# save to computer
+write.csv(MindprintDF, "Mindprint_SATScores.csv", row.names=TRUE) #save to computer
+```
+

@@ -1,0 +1,259 @@
+---
+title: "Untitled"
+author: "Felicia Zhang"
+date: '2018-12-01'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(ggplot2) 
+library(zoo)
+library(reshape)
+library(plyr)
+library(dplyr)
+library(scales) 
+library(data.table)
+library(signal)
+library(matrixStats)
+library(lme4)
+library(arm)
+library(broom)
+library(tidyr)
+library(wesanderson)
+library(car)
+library(lmerTest)
+library(rpart)
+library(rpart.plot)
+library(partykit)
+
+#Import data
+mp <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Mindprint_ScaledScores_YesCombo_112418.csv")
+```
+
+
+```{r cars}
+# Label students who received extra time: 2507 (don't have data), 2421, 4499, 6150, 517, 2010, 2948, 6171, 5866, 4967, 2720, 1872, 6808
+mp$ExtraTime <- 0
+
+mp$ExtraTime[mp$customer_id==2421] <- 1
+mp$ExtraTime[mp$customer_id==4499] <- 1
+mp$ExtraTime[mp$customer_id==6150] <- 1
+mp$ExtraTime[mp$customer_id==517] <- 1
+mp$ExtraTime[mp$customer_id==2010] <- 1
+mp$ExtraTime[mp$customer_id==2948] <- 1
+mp$ExtraTime[mp$customer_id==6171] <- 1
+mp$ExtraTime[mp$customer_id==5866] <- 1
+mp$ExtraTime[mp$customer_id==4967] <- 1
+mp$ExtraTime[mp$customer_id==2720] <- 1
+mp$ExtraTime[mp$customer_id==1872] <- 1
+mp$ExtraTime[mp$customer_id==6808] <- 1
+mp$ExtraTime[mp$customer_id==8568] <- 1
+mp$ExtraTime[mp$customer_id==10266] <- 1
+mp$ExtraTime[mp$customer_id==8409] <- 1
+
+length(which(mp$ExtraTime==1))
+```
+
+```{r}
+# Replace outlier Mindprint scores (accuracy scores with < -2 with -2)
+# 1901: WM_Az, 5143: ATT_Az, 1902: ATT_Az, 6381: ATT_Az
+
+mp$WM_Az[mp$customer_id==1901] <- -2
+mp$ATT_Az[mp$customer_id==5143] <- -2
+mp$ATT_Az[mp$customer_id==1902] <- -2
+mp$ATT_Az[mp$customer_id==6381] <- -2
+```
+
+# Remove students that having missing ACT subject scores
+```{r}
+mp <- mp[!is.na(mp$EngScaledScore),]
+mp <- mp[!is.na(mp$MathScaledScore),]
+mp <- mp[!is.na(mp$ScienceScaledScore),]
+mp <- mp[!is.na(mp$ReadingScaledScore),]
+```
+
+# Prepare DF
+```{r}
+# drop processing speed
+mp$PROCESSING_SPEED_Sz <- NULL
+
+# drop students who received extra time
+mp <- subset(mp, ExtraTime==0)
+```
+
+Reading
+```{r}
+y <- mp$ReadingScaledScore
+
+mindprint <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Mindprintscores.csv")
+mindprint$customer_id <- NULL
+finalDF <- cbind(mindprint, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=1, data=finalDF)
+
+#printcp(tree) # display the results 
+#plotcp(tree) # visualize cross-validation results 
+
+# 2. find best cp
+#bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+
+# 3. Prune the tree using the best cp.
+#tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot
+plot(as.party(tree), main="Regression Tree for ACT Reading")
+#box plots of the outcome that we are trying to predict.
+
+# calculate SD and CI
+stats <- aggregate(finalDF$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(finalDF$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+stats$n <- 22
+stats$n[stats$node==5] <- 78
+stats$n[stats$node==7] <- 55
+stats$n[stats$node==8] <- 70
+stats$n[stats$node==10] <- 20
+stats$n[stats$node==11] <- 20
+
+# 95% CI
+stats$CIlow <- 0 
+stats$CIhigh <- 0
+
+stats$CIlow <- stats$mean - (qnorm(0.975)*stats$sd/sqrt(stats$n))
+stats$CIhigh <- stats$mean + (qnorm(0.975)*stats$sd/sqrt(stats$n))
+```
+
+English
+```{r}
+y <- mp$EngScaledScore
+mindprint <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Mindprintscores.csv")
+mindprint$customer_id <- NULL
+finalDF <- cbind(mindprint, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=2, data=finalDF)
+# 
+# printcp(tree) # display the results 
+# plotcp(tree) # visualize cross-validation results 
+# 
+# # 2. find best cp
+# bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+# 
+# # 3. Prune the tree using the best cp.
+# tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot (w/box plots)
+plot(as.party(tree), main="Regression Tree for ACT English") # color of the boxes)
+
+# calculate SD and CI
+stats <- aggregate(finalDF$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(finalDF$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+stats$n <- 24
+stats$n[stats$node==4] <- 212
+stats$n[stats$node==5] <- 29
+
+# 95% CI
+stats$CIlow <- 0 
+stats$CIhigh <- 0
+
+stats$CIlow <- stats$mean - (qnorm(0.975)*stats$sd/sqrt(stats$n))
+stats$CIhigh <- stats$mean + (qnorm(0.975)*stats$sd/sqrt(stats$n))
+```
+
+Math
+```{r}
+y <- mp$MathScaledScore
+mindprint <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Mindprintscores.csv")
+mindprint$customer_id <- NULL
+finalDF <- cbind(mindprint, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=finalDF)
+
+# printcp(tree) # display the results 
+# plotcp(tree) # visualize cross-validation results 
+# 
+# # 2. find best cp
+# bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+# 
+# # 3. Prune the tree using the best cp.
+# tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot
+plot(as.party(tree), main="Regression Tree for ACT Math")
+
+# calculate SD and CI
+stats <- aggregate(finalDF$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(finalDF$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+stats$n <- 41
+stats$n[stats$node==5] <- 24
+stats$n[stats$node==7] <- 30
+stats$n[stats$node==8] <- 72
+stats$n[stats$node==10] <-41
+stats$n[stats$node==12] <- 22
+stats$n[stats$node==13] <- 35
+
+# 95% CI
+stats$CIlow <- 0 
+stats$CIhigh <- 0
+
+stats$CIlow <- stats$mean - (qnorm(0.975)*stats$sd/sqrt(stats$n))
+stats$CIhigh <- stats$mean + (qnorm(0.975)*stats$sd/sqrt(stats$n))
+```
+
+Science
+```{r}
+y <- mp$ScienceScaledScore
+mindprint <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Mindprintscores.csv")
+mindprint$customer_id <- NULL
+mindprint$SM_Sz <- NULL
+finalDF <- cbind(mindprint, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=finalDF)
+# 
+# printcp(tree) # display the results 
+# plotcp(tree) # visualize cross-validation results 
+# 
+# # 2. find best cp
+# bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+# 
+# # 3. Prune the tree using the best cp.
+# tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot
+plot(as.party(tree), main="Regression Tree for ACT Science")
+#box plots of the outcome that we are trying to predict.
+
+# calculate SD and CI
+stats <- aggregate(finalDF$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(finalDF$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+stats$n <- 22
+stats$n[stats$node==5] <- 34
+stats$n[stats$node==7] <- 35
+stats$n[stats$node==8] <- 143
+stats$n[stats$node==9] <-31
+
+# 95% CI
+stats$CIlow <- 0 
+stats$CIhigh <- 0
+
+stats$CIlow <- stats$mean - (qnorm(0.975)*stats$sd/sqrt(stats$n))
+stats$CIhigh <- stats$mean + (qnorm(0.975)*stats$sd/sqrt(stats$n))
+```
