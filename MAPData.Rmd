@@ -1,0 +1,513 @@
+---
+title: "MAP & Mindprint"
+author: "Felicia Zhang"
+date: '2018-12-07'
+output: pdf_document
+toc: yes
+toc_depth: 2
+fontsize: 12pt
+fig_height: 6
+fig_width: 7
+
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+## LOAD PACKAGES
+
+library(ggplot2) 
+library(zoo)
+library(reshape)
+library(plyr)
+library(dplyr)
+library(scales) 
+library(data.table)
+library(signal)
+library(matrixStats)
+library(lme4)
+library(arm)
+library(broom)
+library(tidyr)
+library(wesanderson)
+library(readxl)    
+library(extrafont)
+library(glmnet)
+library(GGally)
+library(readxl)
+library(corrplot)
+library(GGally)
+library(rpart)
+library(rpart.plot)
+library(partykit)
+library(knitr)
+
+## LOAD MAP DATA
+
+# Load multiple excel sheets at once
+
+# get names of sheets
+sheets <- readxl::excel_sheets("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/MAPdata/Elm Place MAP Scores.xlsx")
+
+# load in excel data as 1 big file
+lst <- lapply(sheets, function(sheet) 
+  readxl::read_excel("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/MAPdata/Elm Place MAP Scores.xlsx", sheet = sheet)
+)
+
+# prepare names
+names(lst) <- sheets
+
+# turn each sheet into DF
+list2env(lst, envir = .GlobalEnv)
+
+## LOAD MINDPRINT DATA
+
+MindprintDF <- read_xlsx("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/MAPdata/Mindprint Student Data.xlsx")
+
+# Mindprint scores are from grade 7 students. MAP scores are from grade 6 and grade 8 students. 
+``` 
+
+```{r, include=FALSE, warning=FALSE}
+# for Mindprint _SCORE columns, figure out which rows contain "error_error"
+a <- c(which(MindprintDF$SM_SCORE=="error_error"), which(MindprintDF$VMEM_SCORE=="error_error"), which(MindprintDF$ABF_SCORE=="error_error"), which(MindprintDF$LAN_SCORE=="error_error"), which(MindprintDF$NVR_SCORE=="error_error"), which(MindprintDF$WM_SCORE=="error_error"), which(MindprintDF$ATT_SCORE=="error_error"), which(MindprintDF$SMEM_SCORE=="error_error"), which(MindprintDF$SPA_SCORE=="error_error"))
+
+aa <- unique(a)
+
+# remove rows that say "_error" 
+MindprintDF <- MindprintDF[-aa,]
+
+# remove students who didn't try on mindprint: 2256, 2313, 2220, 2234, 2263, 2207
+MindprintDF <- subset(MindprintDF, customer_id != 2256 & customer_id != 2313 & customer_id != 2220 & customer_id != 2234 & customer_id != 2263 & customer_id != 2207)
+```
+
+```{r, include=FALSE, warning=FALSE}
+## Combine Mindprint and MAP scores
+
+# remove irrelevant MAP columns
+
+MAP <- Sheet1
+MAP$TestType <- NULL
+MAP$TestName <- NULL
+MAP$TestStartDate <- NULL
+
+names(MAP)[1] <- "customer_id"
+
+# combine
+finalDF <- merge(MindprintDF,MAP,by="customer_id")
+finalDF$category <- paste(finalDF$Grade, finalDF$Discipline)
+
+# for MAP scores, remove students that didn't take all the tests for both years
+subs <- unique(finalDF$customer_id)
+removesub <- vector()
+
+for (i in 1:length(subs)) {
+  a <- length(which(finalDF$customer_id==subs[i]))
+  if (a!=5) {
+  removesub <- c(removesub, subs[i])
+  }
+}
+
+b <- c(which(finalDF$customer_id==2209), which(finalDF$customer_id==2257), which(finalDF$customer_id==2277), which(finalDF$customer_id==2285), which(finalDF$customer_id==2302))
+
+finalDF <- finalDF[-b,]
+
+write.csv(finalDF, "MAP_MP.csv", row.names=TRUE) #save to computer
+``` 
+
+## Distribution of MAP Percentiles
+```{r, echo=FALSE, warning=FALSE, fig.align='center'}
+
+ggplot(finalDF, aes(x=TestPercentile, fill=factor(Grade)))+
+  geom_histogram(binwidth=5)+
+  theme_bw()+
+  theme(panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Percentile", y = "Number of students")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  facet_wrap(~Discipline)+
+  theme_bw(base_family = "Times", base_size=14)+
+  theme(legend.position = "top")+  
+  scale_y_continuous(limits=c(0,40),breaks=seq(0,40,5))+
+  scale_fill_brewer(palette="Set1",name="Grade")
+
+```
+
+## Distribution of MAP RIT Score
+```{r, echo=FALSE, warning=FALSE, fig.align='center'}
+ggplot(finalDF, aes(x=TestRITScore, fill=factor(Grade)))+
+  geom_histogram(binwidth=5)+
+  theme_bw()+
+  theme(panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "RIT Score", y = "Number of students")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  facet_wrap(~Discipline)+
+  theme_bw(base_family = "Times", base_size=14)+
+  theme(legend.position = "top")+
+  scale_y_continuous(limits=c(0,40),breaks=seq(0,40,5))+
+  scale_fill_brewer(palette="Set1",name="Grade")
+
+```
+
+## Distribution of MAP Test Duration
+```{r, echo=FALSE, warning=FALSE, fig.align='center'}
+ggplot(finalDF, aes(x=TestDurationMinutes, fill=factor(Grade)))+
+  geom_histogram(binwidth=5)+
+  theme_bw()+
+  theme(panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Test duration (minutes)", y = "Number of students")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  facet_wrap(~Discipline)+
+  theme_bw(base_family = "Times", base_size=14)+
+  theme(legend.position = "top")+
+  scale_y_continuous(limits=c(0,20),breaks=seq(0,20,5))+
+  scale_fill_brewer(palette="Set1",name="Grade")
+
+```
+\newpage
+
+## Correlations between overall RIT score, percentile and test duration
+```{r, echo=FALSE, warning=FALSE}
+# grouped all the subjects and grades together
+
+# correlation matrix
+foo <- finalDF[,46:50]
+foo$TestStandardError <- NULL
+
+# plot
+ggcorr(foo, palette = "RdBu", label = TRUE, label_size = 7)
+```
+\newpage
+
+## Correlations between RIT scores
+```{r, echo=FALSE, warning=FALSE}
+# separated by subject and grade
+
+# correlation matrix
+foo <- finalDF[,c(1,46:50)]
+
+# using RIT score
+foo <- foo[,c(1,3,6)]
+
+# change from long to wide
+foo_wide <- spread(foo, category, TestRITScore)
+
+foo2 <- reshape(foo, idvar = "customer_id", timevar = "category", direction = "wide")
+foo2$customer_id <- NULL
+
+# rename columns
+names(foo2)[1] <- "Gr8_Reading"
+names(foo2)[2] <- "Gr8_Math"
+names(foo2)[3] <- "Gr6_Math"
+names(foo2)[4] <- "Gr6_Reading"
+names(foo2)[5] <- "Gr6_Science"
+
+# plot
+ggcorr(foo2, label = TRUE, label_size = 7)
+```
+
+## Correlations between percentiles
+```{r, echo=FALSE, warning=FALSE}
+# separated by subject and grade
+
+# correlation matrix
+foo <- finalDF[,c(1,46:50)]
+
+# using percentile 
+foo <- foo[,c(1,5,6)]
+
+# change from long to wide
+foo_wide <- spread(foo, category, TestPercentile)
+
+foo2 <- reshape(foo, idvar = "customer_id", timevar = "category", direction = "wide")
+foo2$customer_id <- NULL
+
+# rename columns
+names(foo2)[1] <- "Gr8_Reading"
+names(foo2)[2] <- "Gr8_Math"
+names(foo2)[3] <- "Gr6_Math"
+names(foo2)[4] <- "Gr6_Reading"
+names(foo2)[5] <- "Gr6_Science"
+
+# plot
+ggcorr(foo2, label = TRUE, label_size = 7)
+```
+
+\newpage
+
+```{r, echo=FALSE, warning=FALSE}
+# remove not useful mindprint features
+drops <- c("gender","customer_id","SM_SCORE","VMEM_SCORE","ABF_SCORE","LAN_SCORE","NVR_SCORE","WM_SCORE","ATT_SCORE", "SMEM_SCORE", "SPA_SCORE")
+features <- finalDF[ , !(names(finalDF) %in% drops)]
+outcomes <- features[,c(36:39)]
+features <- features[,-c(27:34,36,37,38)]
+```
+
+# Tree models
+
+## Grade 6 Reading trees - percentile
+```{r, echo=FALSE, warning=FALSE, fig.height=6.1}
+x <- subset(features, category == "6 Reading")
+x$category <- NULL
+
+y <- outcomes$TestPercentile[outcomes$category=="6 Reading"]
+
+# combine 
+loo <- cbind(x, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=loo)
+# 
+# printcp(tree) # display the results 
+# plotcp(tree) # visualize cross-validation results 
+# 
+# # 2. find best cp
+# bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+# 
+# # 3. Prune the tree using the best cp.
+# tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot
+plot(as.party(tree))
+#box plots of the outcome that we are trying to predict.
+
+# calculate SD and mean
+stats <- aggregate(loo$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(loo$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+
+kable(stats, format = "markdown", align = 'c', row.names=F)
+```
+
+Verbal reasoning accuracy and efficiency are important for Grade 6 reading.
+
+## Grade 6 Math trees - percentile
+```{r, echo=FALSE, warning=FALSE, fig.height=6.1}
+x <- subset(features, category == "6 Mathematics")
+x$category <- NULL
+
+y <- outcomes$TestPercentile[outcomes$category=="6 Mathematics"]
+
+# combine 
+loo <- cbind(x, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=loo)
+# 
+# printcp(tree) # display the results 
+# plotcp(tree) # visualize cross-validation results 
+# 
+# # 2. find best cp
+# bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+# 
+# # 3. Prune the tree using the best cp.
+# tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot
+plot(as.party(tree))
+#box plots of the outcome that we are trying to predict.
+
+# calculate SD and mean
+stats <- aggregate(loo$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(loo$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+
+kable(stats, format = "markdown", align = 'c', row.names=F)
+```
+
+Test duration, verbal reasoning efficiency and abstract reasoning accuracy are important for Grade 6 math.
+
+## Grade 6 Science trees - percentile
+```{r, echo=FALSE, warning=FALSE, fig.height=6.1}
+x <- subset(features, category == "6 Science")
+x$category <- NULL
+
+y <- outcomes$TestPercentile[outcomes$category=="6 Science"]
+
+# combine 
+loo <- cbind(x, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=loo)
+
+# printcp(tree) # display the results 
+# plotcp(tree) # visualize cross-validation results 
+# 
+# # 2. find best cp
+# bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+# 
+# # 3. Prune the tree using the best cp.
+# tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot
+plot(as.party(tree))
+#box plots of the outcome that we are trying to predict.
+
+# calculate SD and mean
+stats <- aggregate(loo$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(loo$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+
+kable(stats, format = "markdown", align = 'c', row.names=F)
+```
+
+Verbal reasoning accuracy and verbal memory accuracy are important for Grade 6 science.
+
+## Grade 8 Reading trees - percentile
+```{r, echo=FALSE, warning=FALSE, fig.height=6.1}
+x <- subset(features, category == "8 Reading")
+x$category <- NULL
+
+y <- outcomes$TestPercentile[outcomes$category=="8 Reading"]
+
+# combine 
+loo <- cbind(x, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=2, data=loo)
+# 
+# printcp(tree) # display the results 
+# plotcp(tree) # visualize cross-validation results 
+# 
+# # 2. find best cp
+# bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+# 
+# # 3. Prune the tree using the best cp.
+# tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot
+plot(as.party(tree))
+#box plots of the outcome that we are trying to predict.
+
+# calculate SD and mean
+stats <- aggregate(loo$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(loo$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+
+kable(stats, format = "markdown", align = 'c', row.names=F)
+```
+
+Verbal reasoning accuracy is important for Grade 8 reading.
+
+## Grade 8 Math trees - percentile
+```{r, echo=FALSE, warning=FALSE, fig.height=6.1}
+x <- subset(features, category == "8 Mathematics")
+x$category <- NULL
+
+y <- outcomes$TestPercentile[outcomes$category=="8 Mathematics"]
+
+# combine 
+loo <- cbind(x, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=loo)
+# 
+# printcp(tree) # display the results 
+# plotcp(tree) # visualize cross-validation results 
+# 
+# # 2. find best cp
+# bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+# 
+# # 3. Prune the tree using the best cp.
+# tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot
+plot(as.party(tree))
+#box plots of the outcome that we are trying to predict.
+
+# calculate SD and mean
+stats <- aggregate(loo$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(loo$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+
+kable(stats, format = "markdown", align = 'c', row.names=F)
+```
+
+Verbal reasoning efficiency and abstract reasoning accuracy are important for Grade 8 math.
+
+\newpage
+
+## Comparing RIT and percentile regression trees
+```{r, echo=FALSE, warning=FALSE, fig.align='center'}
+# kable
+treesummary <- data.frame( "Grade" = integer(10), "Subject" = character(10),"Outcome" = character(10), "Level1" = character(10), "Level2" = character(10), "Level3" = character(10))
+
+a <- c(6,6,6,8,8,6,6,6,8,8)
+b <- c("Reading","Math","Science","Reading","Math","Reading","Math","Science","Reading","Math")
+c <- c("RIT","RIT","RIT","RIT","RIT","Percentile","Percentile","Percentile","Percentile","Percentile")
+d <- c("LAN_Az","TestDuration","LAN_Az","LAN_Az","LAN_Az","LAN_Az","TestDuration","LAN_Az","LAN_Az","LAN_eff")
+e <- c("LAN_eff","LAN_eff","VMEM_eff","LAN_Az","TestDuration","LAN_eff","LAN_eff","VMEM_Az","LAN_Az","NVR_Az")
+f <- c(NA,"NVR_Az","ABF_Az",NA,NA,NA,"NVR_Az",NA,NA,NA)
+
+treesummary$Grade <- a
+treesummary$Subject <- b
+treesummary$Outcome <- c
+treesummary$Level1 <- d
+treesummary$Level2 <- e
+treesummary$Level3 <- f
+
+kable(treesummary, format = "markdown", align = 'c', row.names=F, caption = 'Comparison of RIT and percentile')
+```
+The biggest difference is between Grade 8 Math RIT and Grade 8 Math percentile
+
+## Comparing grade 6 and grade 8 regression trees (percentile)
+```{r, echo=FALSE, warning=FALSE, fig.align='center'}
+# kable
+treesummary <- data.frame( "Grade" = integer(4), "Subject" = character(4),"Outcome" = character(4), "Level1" = character(4), "Level2" = character(4), "Level3" = character(4))
+
+a <- c(6,8,6,8)
+b <- c("Reading","Reading","Math","Math")
+c <- c("Percentile","Percentile","Percentile","Percentile")
+d <- c("LAN_Az","LAN_Az","TestDuration","LAN_eff")
+e <- c("LAN_eff","LAN_Az","LAN_eff","NVR_Az")
+f <- c(NA,NA,"NVR_Az",NA)
+
+treesummary$Grade <- a
+treesummary$Subject <- b
+treesummary$Outcome <- c
+treesummary$Level1 <- d
+treesummary$Level2 <- e
+treesummary$Level3 <- f
+
+kable(treesummary, format = "markdown", align = 'c', row.names=F)
+```
+
+## Comparing grade 6 and grade 8 regression trees (RIT score)
+```{r, echo=FALSE, warning=FALSE, fig.align='center'}
+# kable
+treesummary <- data.frame( "Grade" = integer(4), "Subject" = character(4),"Outcome" = character(4), "Level1" = character(4), "Level2" = character(4), "Level3" = character(4))
+
+a <- c(6,8,6,8)
+b <- c("Reading","Reading","Math","Math")
+c <- c("RIT","RIT","RIT","RIT")
+d <- c("LAN_Az","LAN_Az","TestDuration","LAN_Az")
+e <- c("LAN_eff","LAN_Az","LAN_eff","TestDuration")
+f <- c(NA,NA,"NVR_Az",NA)
+
+treesummary$Grade <- a
+treesummary$Subject <- b
+treesummary$Outcome <- c
+treesummary$Level1 <- d
+treesummary$Level2 <- e
+treesummary$Level3 <- f
+
+kable(treesummary, format = "markdown", align = 'c', row.names=F)
+```
+
+```{r, echo=FALSE, warning=FALSE, fig.align='center'}
+
+``` 
+
+
+

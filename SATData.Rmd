@@ -1,0 +1,216 @@
+---
+title: "MCAS Data"
+author: "Felicia Zhang"
+date: '2018-12-19'
+output: pdf_document
+toc: yes
+toc_depth: 2
+fontsize: 12pt
+fig_height: 6
+fig_width: 7
+
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+## LOAD PACKAGES
+
+library(ggplot2) 
+library(zoo)
+library(reshape)
+library(plyr)
+library(dplyr)
+library(scales) 
+library(data.table)
+library(signal)
+library(matrixStats)
+library(lme4)
+library(arm)
+library(broom)
+library(tidyr)
+library(wesanderson)
+library(readxl)    
+library(extrafont)
+library(glmnet)
+library(GGally)
+library(readxl)
+library(corrplot)
+library(GGally)
+library(rpart)
+library(rpart.plot)
+library(partykit)
+library(knitr)
+library(readxl)
+library(ggcorrplot)
+
+# Load multiple excel sheets at once
+
+# get names of sheets
+sheets <- readxl::excel_sheets("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/SAT_Scores_010719.xlsx")
+
+# load in excel data as 1 big file
+lst <- lapply(sheets, function(sheet) 
+  readxl::read_excel("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/SAT_Scores_010719.xlsx", sheet = sheet)
+)
+
+# prepare names
+names(lst) <- sheets
+
+# turn each sheet into DF
+list2env(lst, envir = .GlobalEnv)
+
+# combine all SAT scores
+SATscaledscores <- rbind(Manjri, Maureen, APlus, Paidosh, SmartyPrep, PSAT, SAT)
+
+## Merge with Mindprint DF
+MindprintDF <- merge(Mindprint, SATscaledscores, by = "customer_id")
+
+MindprintDF$Grade[c(which(is.na(MindprintDF$Grade)))] <- 0
+MindprintDF$ExtraTime[c(which(is.na(MindprintDF$ExtraTime)))] <- 0
+
+#Remove grade 10
+MindprintDF <- subset(MindprintDF, Grade !=10)
+
+#Remove students that received extra time
+MindprintDF <- subset(MindprintDF, ExtraTime !="y")
+
+#students that have error
+MindprintDF$WM_Az[MindprintDF$customer_id==10032] <- NA
+MindprintDF$WM_Sz[MindprintDF$customer_id==10032] <- NA
+MindprintDF$WM_EFFICIENCY[MindprintDF$customer_id==10032] <- NA
+
+write.csv(MindprintDF, "SAT_MP.csv", row.names=TRUE) #save to computer
+```  
+
+Prepare predictor DF
+```{r}
+# drop processing speed
+mindprint <- MindprintDF[,c(1:39)]
+mindprint$customer_id <- NULL
+mindprint$age <- NULL
+mindprint$gender <- NULL
+mindprint$SM_SCORE <- NULL
+mindprint$VMEM_SCORE <- NULL
+mindprint$ABF_SCORE <- NULL
+mindprint$LAN_SCORE <- NULL
+mindprint$NVR_SCORE <- NULL
+mindprint$WM_SCORE <- NULL
+mindprint$ATT_SCORE <- NULL
+mindprint$SMEM_SCORE <- NULL
+mindprint$ATT_A <- NULL
+mindprint$SPA_S <- NULL
+mindprint$SPA_SCORE <- NULL
+
+head(mindprint)
+```
+
+Reading
+```{r}
+y <- MindprintDF$ReadingScaledScore
+
+finalDF <- cbind(mindprint, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=finalDF)
+
+#printcp(tree) # display the results 
+#plotcp(tree) # visualize cross-validation results 
+
+# 2. find best cp
+#bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+
+# 3. Prune the tree using the best cp.
+#tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot
+plot(as.party(tree), main="Regression Tree for SAT Reading")
+#box plots of the outcome that we are trying to predict.
+
+# calculate SD and CI
+stats <- aggregate(finalDF$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(finalDF$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+stats$onesd_lower <- stats$mean - stats$sd
+stats$onesd_upper <- stats$mean + stats$sd
+stats$twosd_lower <- stats$mean - (2*stats$sd)
+stats$twosd_upper <- stats$mean + (2*stats$sd)
+  
+kable(stats, format = "markdown", align = 'c', row.names=F)
+```
+
+Writing
+```{r}
+y <- MindprintDF$WritingScaledScore
+
+foo <- mindprint
+foo$NVR_Sz <- NULL
+
+finalDF <- cbind(foo, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=finalDF)
+# 
+# printcp(tree) # display the results 
+# plotcp(tree) # visualize cross-validation results 
+# 
+# # 2. find best cp
+# bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+# 
+# # 3. Prune the tree using the best cp.
+# tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot (w/box plots)
+plot(as.party(tree), main="Regression Tree for SAT Writing") 
+
+# calculate SD and CI
+stats <- aggregate(finalDF$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(finalDF$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+stats$onesd_lower <- stats$mean - stats$sd
+stats$onesd_upper <- stats$mean + stats$sd
+stats$twosd_lower <- stats$mean - (2*stats$sd)
+stats$twosd_upper <- stats$mean + (2*stats$sd)
+
+kable(stats, format = "markdown", align = 'c', row.names=F)
+```
+
+Math
+```{r}
+y <- MindprintDF$MathScaledScore
+
+finalDF <- cbind(mindprint, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=finalDF)
+
+# printcp(tree) # display the results 
+# plotcp(tree) # visualize cross-validation results 
+# 
+# # 2. find best cp
+# bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+# 
+# # 3. Prune the tree using the best cp.
+# tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot
+plot(as.party(tree), main="Regression Tree for SAT Math")
+
+# calculate SD and CI
+stats <- aggregate(finalDF$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(finalDF$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+stats$onesd_lower <- stats$mean - stats$sd
+stats$onesd_upper <- stats$mean + stats$sd
+stats$twosd_lower <- stats$mean - (2*stats$sd)
+stats$twosd_upper <- stats$mean + (2*stats$sd)
+
+kable(stats, format = "markdown", align = 'c', row.names=F)
+```

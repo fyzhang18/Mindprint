@@ -1,0 +1,142 @@
+---
+title: "Untitled"
+author: "Felicia Zhang"
+date: '2018-12-30'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(shiny)
+library(ggplot2) 
+library(zoo)
+library(reshape)
+library(plyr)
+library(dplyr)
+library(scales) 
+library(data.table)
+library(signal)
+library(matrixStats)
+library(lme4)
+library(arm)
+library(broom)
+library(tidyr)
+library(wesanderson)
+library(car)
+library(lmerTest)
+library(rpart)
+library(rpart.plot)
+library(partykit)
+
+mp <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Mindprint_ScaledScores_010819.csv")
+
+# Label students who received extra time: 2507 (don't have data), 2421, 4499, 6150, 517, 2010, 2948, 6171, 5866, 4967, 2720, 1872, 6808
+mp$ExtraTime <- 0
+
+mp$ExtraTime[mp$customer_id==2421] <- 1
+mp$ExtraTime[mp$customer_id==4499] <- 1
+mp$ExtraTime[mp$customer_id==6150] <- 1
+mp$ExtraTime[mp$customer_id==517] <- 1
+mp$ExtraTime[mp$customer_id==2010] <- 1
+mp$ExtraTime[mp$customer_id==2948] <- 1
+mp$ExtraTime[mp$customer_id==6171] <- 1
+mp$ExtraTime[mp$customer_id==5866] <- 1
+mp$ExtraTime[mp$customer_id==4967] <- 1
+mp$ExtraTime[mp$customer_id==2720] <- 1
+mp$ExtraTime[mp$customer_id==1872] <- 1
+mp$ExtraTime[mp$customer_id==6808] <- 1
+mp$ExtraTime[mp$customer_id==8568] <- 1
+mp$ExtraTime[mp$customer_id==10266] <- 1
+mp$ExtraTime[mp$customer_id==8409] <- 1
+
+length(which(mp$ExtraTime==1))
+
+# Replace outlier Mindprint scores (accuracy scores with < -2 with -2)
+# 1901: WM_Az, 5143: ATT_Az, 1902: ATT_Az, 6381: ATT_Az
+
+mp$WM_Az[mp$customer_id==1901] <- -2
+mp$ATT_Az[mp$customer_id==5143] <- -2
+mp$ATT_Az[mp$customer_id==1902] <- -2
+mp$ATT_Az[mp$customer_id==6381] <- -2
+
+# Remove students that having missing ACT subject scores
+
+mp <- mp[!is.na(mp$EngScaledScore),]
+mp <- mp[!is.na(mp$MathScaledScore),]
+mp <- mp[!is.na(mp$ScienceScaledScore),]
+mp <- mp[!is.na(mp$ReadingScaledScore),]
+
+# drop processing speed
+mp$PROCESSING_SPEED_Sz <- NULL
+
+# drop students who received extra time
+mp <- subset(mp, ExtraTime==0)
+
+# create mindprint feature DF
+mindprintfeature <- mp[,3:35]
+mindprintfeature$SM_SCORE <- NULL
+mindprintfeature$VMEM_SCORE <- NULL
+mindprintfeature$ABF_SCORE <- NULL
+mindprintfeature$LAN_SCORE <- NULL
+mindprintfeature$NVR_SCORE <- NULL
+mindprintfeature$WM_SCORE <- NULL
+mindprintfeature$ATT_SCORE <- NULL
+mindprintfeature$SMEM_SCORE <- NULL
+
+# UI = creates the user interface in a shiny application. It provides interactivity to the shiny app by taking the input from the user and dynamically displaying the generated output on the screen.
+
+ui <- fluidPage(
+  # Give the page a title
+  titlePanel("Regression Trees"),
+  
+  # Generate a row with a sidebar
+  sidebarLayout(      
+    
+    sidebarPanel(
+      selectInput('ycol', 'Choose ACT subject test:', names(mp)[48:51]),
+      numericInput("depth", "Depth of tree",3)
+    ),
+    mainPanel(
+      plotOutput('plot1'),
+      tableOutput('view')
+    )
+  )
+)
+
+# Server = This file contains the series of steps to convert the input given by user into the desired output to be displayed.
+server <- function(input, output, session) {
+  
+  output$plot1 <- renderPlot({
+    selectedData <- cbind(mindprintfeature, mp[, input$ycol])
+    d <- input$depth
+    
+    colnames(selectedData)[26] <- "y"
+    
+    foo <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=d, data=selectedData)
+    
+    plot(as.party(foo))
+    
+  })
+  
+  output$view <- renderTable({
+    selectedData <- cbind(mindprintfeature, mp[, input$ycol])
+    d <- input$depth
+    colnames(selectedData)[26] <- "y"
+    foo <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=d, data=selectedData)
+
+    stats <- aggregate(selectedData$y, list(foo$where), sd)
+    names(stats)[1] <- "node"
+    names(stats)[2] <- "sd"
+    stats2 <- aggregate(selectedData$y, list(foo$where), mean)
+    names(stats2)[2] <- "mean"
+    stats$mean <- stats2$mean
+    stats$onesd_lower <- stats$mean - stats$sd
+    stats$onesd_upper <- stats$mean + stats$sd
+    stats$twosd_lower <- stats$mean - (2*stats$sd)
+    stats$twosd_upper <- stats$mean + (2*stats$sd)
+
+    round(stats, digits = 0)
+  })  
+}
+
+shinyApp(ui=ui, server = server)
+```

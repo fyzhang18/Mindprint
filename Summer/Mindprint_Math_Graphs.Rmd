@@ -1,0 +1,1741 @@
+---
+title: "Mindprint - Math"
+author: "Felicia Zhang"
+date: '2018-07-25'
+output: pdf_document
+toc: yes
+toc_depth: 2
+fontsize: 12pt
+fig_height: 5
+fig_width: 7
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+library(ggplot2) 
+library(zoo)
+library(reshape)
+library(plyr)
+library(dplyr)
+library(scales) 
+library(data.table)
+library(signal)
+library(matrixStats)
+library(lme4)
+library(arm)
+library(broom)
+library(tidyr)
+library(wesanderson)
+library(readxl)    
+library(extrafont)
+
+## 1. Load ACT/SAT data
+
+#LOAD MULTIPLE EXCEL SHEETS INTO SEPARATE DFS
+
+#get names of sheets
+sheets <- readxl::excel_sheets("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Math.xlsx")
+
+#load in excel data as 1 big file
+lst <- lapply(sheets, function(sheet) 
+  readxl::read_excel("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Math.xlsx", sheet = sheet)
+)
+
+#prepare names
+names(lst) <- sheets
+
+#turn it into DF
+list2env(lst, envir = .GlobalEnv)
+
+#difference between 70C, 72C, Combo v2.4: three different tests based on where we had sufficient student data, noting the one called the Combo is a mixture of SAT and ACT questions.
+
+#0 = incorrect, 1 = correct, 2 = skip
+
+## 2. Load mindprint data
+mindprintdata <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/mindprint_data.csv", header=T)
+```
+
+```{r, echo=FALSE, warning=FALSE, include=FALSE}
+## SET UP DF
+names(`70C`)[2:61] = 1:60
+names(`72C`)[2:61] = 1:60
+
+# Mindprint subjects
+subs <- unique(mindprintdata$student_id)
+
+# duplicates = subID 441, 8826, 4573, 
+
+# Find matching subjects in 70C
+z <- which(`70C`$Question=="student_id")
+zz <- length(`70C`$Question)
+foo <- `70C`[(z+1):zz,]
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+colnames(foo)[1] <- "student_id"
+
+foofinal1 <- merge(mindprintdata, foo)
+
+# Find matching subjects in 72C
+z <- which(`72C`$Question=="student_id")
+zz <- length(`72C`$Question)
+foo <- `72C`[(z+1):zz,]
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+colnames(foo)[1] <- "student_id"
+
+foofinal2 <- merge(mindprintdata, foo)
+
+finalDF <- rbind(foofinal1,foofinal2)
+
+# calculate ACT math score (total number of questions = 60)
+finalDF$ACTmathraw <- rowSums(finalDF[43:102])
+finalDF$ACTmathscore <- finalDF$ACTmathraw / 60
+
+# remove missing data
+finalDF2 <- na.omit(finalDF)
+```
+
+\newpage
+
+# ACT Math (n = 61)
+## Overall score 
+### Visual motor speed 
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=SM_Sz,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed score for visual motor speed", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+  
+cor.test(finalDF2$SM_Sz, finalDF2$ACTmathscore, method="pearson")
+```
+\newpage
+
+### Verbal memory accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=VMEM_Az,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for verbal memory", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$VMEM_Az, finalDF2$ACTmathscore, method="pearson")  
+```
+\newpage
+
+### Verbal memory speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=VMEM_Sz,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for verbal memory", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$VMEM_Sz, finalDF2$ACTmathscore, method="pearson")    
+```
+\newpage
+
+### Flexible thinking accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=ABF_Az,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for flexible thinking", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$ABF_Az, finalDF2$ACTmathscore, method="pearson")  
+```
+\newpage
+
+### Flexible thinking speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=ABF_Sz,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for flexible thinking", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$ABF_Sz, finalDF2$ACTmathscore, method="pearson")    
+```
+\newpage
+
+### Verbal reasoning accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=LAN_Az,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for verbal reasoning", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$LAN_Az, finalDF2$ACTmathscore, method="pearson")  
+```
+\newpage
+
+### Verbal reasoning speed 
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=LAN_Sz,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for verbal reasoning", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$LAN_Sz, finalDF2$ACTmathscore, method="pearson")    
+```
+\newpage
+
+### Abstract reasoning accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=NVR_Az,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for abstract reasoning", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$NVR_Az, finalDF2$ACTmathscore, method="pearson")  
+```
+\newpage
+
+### Abstract reasoning speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=NVR_Sz,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for abstract reasoning", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$NVR_Sz, finalDF2$ACTmathscore, method="pearson")    
+```
+\newpage
+
+### Working memory accuracy  (p = 0.07)
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=WM_Az,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for working memory", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$WM_Az, finalDF2$ACTmathscore, method="pearson")  
+```
+\newpage
+
+### Working memory speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=WM_Sz,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for working memory", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$WM_Sz, finalDF2$ACTmathscore, method="pearson")    
+```
+\newpage
+
+### Working memory efficiency (p < 0.05)
+##### Average of normed accuracy and speed scores for working memory.
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=WM_EFFICIENCY,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Average of normed accuracy and speed scores for working memory", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$WM_EFFICIENCY, finalDF2$ACTmathscore, method="pearson")    
+```
+\newpage
+
+### Attention accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=ATT_Az,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for attention", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$ATT_Az, finalDF2$ACTmathscore, method="pearson")  
+```
+\newpage
+
+### Attention speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=ATT_Sz,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for attention", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$ATT_Sz, finalDF2$ACTmathscore, method="pearson")    
+```
+\newpage
+
+### Visual memory accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=SMEM_Az,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for visual memory", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$SMEM_Az, finalDF2$ACTmathscore, method="pearson")  
+```
+\newpage
+
+### Visual memory speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=SMEM_Sz,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for visual memory", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$SMEM_Sz, finalDF2$ACTmathscore, method="pearson")    
+```
+\newpage
+
+### Spatial perception accuracy (p < 0.01)
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=SPA_Az,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for spatial perception", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$SPA_Az, finalDF2$ACTmathscore, method="pearson")  
+```
+\newpage
+
+### Spatial perception speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(finalDF2,aes(x=SPA_Sz,y=ACTmathscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for spatial perception", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(finalDF2$SPA_Sz, finalDF2$ACTmathscore, method="pearson")    
+```
+\newpage
+
+```{r, echo=FALSE, warning=FALSE, include=FALSE}
+#set up subsection DF
+foo <- `70C`[1:4,]
+subsection <- t(foo)
+subsection <- data.frame(subsection)
+subsection <- subsection[-1, ] 
+
+colnames(subsection)[1] <- "test"
+colnames(subsection)[2] <- "question"
+colnames(subsection)[3] <- "section"
+colnames(subsection)[4] <- "subsection"
+
+EA <- subset(subsection, subsection=="EA")
+GT <- subset(subsection, subsection=="GT")
+AG <- subset(subsection, subsection=="AG")
+
+EAnum <- unique(EA$question)
+EAnum <- as.numeric(EAnum)
+GTnum <- unique(GT$question)
+GTnum <- as.numeric(GTnum)
+AGnum <- unique(AG$question)
+AGnum <- as.numeric(AGnum)
+
+#all questions
+questions <- finalDF2[,43:102]
+
+#AG DF
+AG_DF <- questions[,AGnum]
+AG_DF$AGraw <- rowSums(AG_DF)
+AG_DF$AGscore <- AG_DF$AGraw / length(AGnum)
+AG_DF <- cbind(finalDF2[,1:42],AG_DF)
+
+#EA DF
+EA_DF <- questions[,EAnum]
+EA_DF$EAraw <- rowSums(EA_DF)
+EA_DF$EAscore <- EA_DF$EAraw / length(EAnum)
+EA_DF <- cbind(finalDF2[,1:42],EA_DF)
+
+#GT DF
+GT_DF <- questions[,GTnum]
+GT_DF$GTraw <- rowSums(GT_DF)
+GT_DF$GTscore <- GT_DF$GTraw / length(GTnum)
+GT_DF <- cbind(finalDF2[,1:42],GT_DF)
+```
+
+## EA/ Pre-Algebra/Elementary Algebra Subsection
+### Visual motor speed  
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=SM_Sz,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed score for visual motor speed", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+  
+cor.test(EA_DF$SM_Sz, EA_DF$EAscore, method="pearson")
+```
+\newpage
+
+### Verbal memory accuracy 
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=VMEM_Az,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for verbal memory", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$VMEM_Az, EA_DF$EAscore, method="pearson")  
+```
+\newpage
+
+### Verbal memory speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=VMEM_Sz,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for verbal memory", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$VMEM_Sz, EA_DF$EAscore, method="pearson")    
+```
+\newpage
+
+### Flexible thinking accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=ABF_Az,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for flexible thinking", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$ABF_Az, EA_DF$EAscore, method="pearson")  
+```
+\newpage
+
+### Flexible thinking speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=ABF_Sz,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for flexible thinking", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$ABF_Sz, EA_DF$EAscore, method="pearson")    
+```
+\newpage
+
+### Verbal reasoning accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=LAN_Az,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for verbal reasoning", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$LAN_Az, EA_DF$EAscore, method="pearson")  
+```
+\newpage
+
+### Verbal reasoning speed 
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=LAN_Sz,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for verbal reasoning", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$LAN_Sz, EA_DF$EAscore, method="pearson")    
+```
+\newpage
+
+### Abstract reasoning accuracy (p = 0.08)
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=NVR_Az,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for abstract reasoning", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$NVR_Az, EA_DF$EAscore, method="pearson")  
+```
+\newpage
+
+### Abstract reasoning speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=NVR_Sz,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for abstract reasoning", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$NVR_Sz, EA_DF$EAscore, method="pearson")    
+```
+\newpage
+
+### Working memory accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=WM_Az,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for working memory", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$WM_Az, EA_DF$EAscore, method="pearson")  
+```
+\newpage
+
+### Working memory speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=WM_Sz,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for working memory", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$WM_Sz, EA_DF$EAscore, method="pearson")    
+```
+\newpage
+
+### Working memory efficiency 
+##### Average of normed accuracy and speed scores for working memory.
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=WM_EFFICIENCY,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Average of normed accuracy and speed scores for working memory", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$WM_EFFICIENCY, EA_DF$EAscore, method="pearson")    
+```
+\newpage
+
+### Attention accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=ATT_Az,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for attention", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$ATT_Az, EA_DF$EAscore, method="pearson")  
+```
+\newpage
+
+### Attention speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=ATT_Sz,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for attention", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$ATT_Sz, EA_DF$EAscore, method="pearson")    
+```
+\newpage
+
+### Visual memory accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=SMEM_Az,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for visual memory", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$SMEM_Az, EA_DF$EAscore, method="pearson")  
+```
+\newpage
+
+### Visual memory speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=SMEM_Sz,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for visual memory", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$SMEM_Sz, EA_DF$EAscore, method="pearson")    
+```
+\newpage
+
+### Spatial perception accuracy (p < 0.001)
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=SPA_Az,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for spatial perception", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$SPA_Az, EA_DF$EAscore, method="pearson")  
+```
+\newpage
+
+### Spatial perception speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(EA_DF,aes(x=SPA_Sz,y=EAscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for spatial perception", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(EA_DF$SPA_Sz, EA_DF$EAscore, method="pearson")    
+```
+\newpage
+
+## GT/ Plane Geometry/Trigonometry Subsection
+### Visual motor speed  
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=SM_Sz,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed score for visual motor speed", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+  
+cor.test(GT_DF$SM_Sz, GT_DF$GTscore, method="pearson")
+```
+\newpage
+
+### Verbal memory accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=VMEM_Az,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for verbal memory", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$VMEM_Az, GT_DF$GTscore, method="pearson")  
+```
+\newpage
+
+### Verbal memory speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=VMEM_Sz,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for verbal memory", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$VMEM_Sz, GT_DF$GTscore, method="pearson")    
+```
+\newpage
+
+### Flexible thinking accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=ABF_Az,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for flexible thinking", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$ABF_Az, GT_DF$GTscore, method="pearson")  
+```
+\newpage
+
+### Flexible thinking speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=ABF_Sz,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for flexible thinking", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$ABF_Sz, GT_DF$GTscore, method="pearson")    
+```
+\newpage
+
+### Verbal reasoning accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=LAN_Az,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for verbal reasoning", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$LAN_Az, GT_DF$GTscore, method="pearson")  
+```
+\newpage
+
+### Verbal reasoning speed 
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=LAN_Sz,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for verbal reasoning", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$LAN_Sz, GT_DF$GTscore, method="pearson")    
+```
+\newpage
+
+### Abstract reasoning accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=NVR_Az,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for abstract reasoning", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$NVR_Az, GT_DF$GTscore, method="pearson")  
+```
+\newpage
+
+### Abstract reasoning speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=NVR_Sz,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for abstract reasoning", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$NVR_Sz, GT_DF$GTscore, method="pearson")    
+```
+\newpage
+
+### Working memory accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=WM_Az,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for working memory", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$WM_Az, GT_DF$GTscore, method="pearson")  
+```
+\newpage
+
+### Working memory speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=WM_Sz,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for working memory", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$WM_Sz, GT_DF$GTscore, method="pearson")    
+```
+\newpage
+
+### Working memory efficiency (p = 0.07)
+##### Average of normed accuracy and speed scores for working memory.
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=WM_EFFICIENCY,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Average of normed accuracy and speed scores for working memory", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$WM_EFFICIENCY, GT_DF$GTscore, method="pearson")    
+```
+\newpage
+
+### Attention accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=ATT_Az,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for attention", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$ATT_Az, GT_DF$GTscore, method="pearson")  
+```
+\newpage
+
+### Attention speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=ATT_Sz,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for attention", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$ATT_Sz, GT_DF$GTscore, method="pearson")    
+```
+\newpage
+
+### Visual memory accuracy 
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=SMEM_Az,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for visual memory", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$SMEM_Az, GT_DF$GTscore, method="pearson")  
+```
+\newpage
+
+### Visual memory speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=SMEM_Sz,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for visual memory", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$SMEM_Sz, GT_DF$GTscore, method="pearson")    
+```
+\newpage
+
+### Spatial perception accuracy (p < 0.05)
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=SPA_Az,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for spatial perception", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$SPA_Az, GT_DF$GTscore, method="pearson")  
+```
+\newpage
+
+### Spatial perception speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(GT_DF,aes(x=SPA_Sz,y=GTscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for spatial perception", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(GT_DF$SPA_Sz, GT_DF$GTscore, method="pearson")    
+```
+\newpage
+
+## AG/ Intermediate Algebra/Coordinate Geometry Subsection
+### Visual motor speed  
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=SM_Sz,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed score for visual motor speed", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+  
+cor.test(AG_DF$SM_Sz, AG_DF$AGscore, method="pearson")
+```
+\newpage
+
+### Verbal memory accuracy 
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=VMEM_Az,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for verbal memory", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$VMEM_Az, AG_DF$AGscore, method="pearson")  
+```
+\newpage
+
+### Verbal memory speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=VMEM_Sz,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for verbal memory", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$VMEM_Sz, AG_DF$AGscore, method="pearson")    
+```
+\newpage
+
+### Flexible thinking accuracy 
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=ABF_Az,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for flexible thinking", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$ABF_Az, AG_DF$AGscore, method="pearson")  
+```
+\newpage
+
+### Flexible thinking speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=ABF_Sz,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for flexible thinking", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$ABF_Sz, AG_DF$AGscore, method="pearson")    
+```
+\newpage
+
+### Verbal reasoning accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=LAN_Az,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for verbal reasoning", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$LAN_Az, AG_DF$AGscore, method="pearson")  
+```
+\newpage
+
+### Verbal reasoning speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=LAN_Sz,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for verbal reasoning", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$LAN_Sz, AG_DF$AGscore, method="pearson")    
+```
+\newpage
+
+### Abstract reasoning accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=NVR_Az,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for abstract reasoning", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$NVR_Az, AG_DF$AGscore, method="pearson")  
+```
+\newpage
+
+### Abstract reasoning speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=NVR_Sz,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for abstract reasoning", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$NVR_Sz, AG_DF$AGscore, method="pearson")    
+```
+\newpage
+
+### Working memory accuracy (p < 0.05)
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=WM_Az,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for working memory", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$WM_Az, AG_DF$AGscore, method="pearson")  
+```
+\newpage
+
+### Working memory speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=WM_Sz,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for working memory", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$WM_Sz, AG_DF$AGscore, method="pearson")    
+```
+\newpage
+
+### Working memory efficiency (p < 0.05)
+##### Average of normed accuracy and speed scores for working memory.
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=WM_EFFICIENCY,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Average of normed accuracy and speed scores for working memory", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$WM_EFFICIENCY, AG_DF$AGscore, method="pearson")    
+```
+\newpage
+
+### Attention accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=ATT_Az,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for attention", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$ATT_Az, AG_DF$AGscore, method="pearson")  
+```
+\newpage
+
+### Attention speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=ATT_Sz,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for attention", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$ATT_Sz, AG_DF$AGscore, method="pearson")    
+```
+\newpage
+
+### Visual memory accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=SMEM_Az,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for visual memory", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$SMEM_Az, AG_DF$AGscore, method="pearson")  
+```
+\newpage
+
+### Visual memory speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=SMEM_Sz,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for visual memory", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$SMEM_Sz, AG_DF$AGscore, method="pearson")    
+```
+\newpage
+
+### Spatial perception accuracy
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=SPA_Az,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed accuracy score for spatial perception", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$SPA_Az, AG_DF$AGscore, method="pearson")  
+```
+\newpage
+
+### Spatial perception speed
+```{r, echo=FALSE, warning=FALSE}
+
+ggplot(AG_DF,aes(x=SPA_Sz,y=AGscore))+
+  geom_point(size=3)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Normed speed score for spatial perception", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.position = "none")+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  stat_smooth(method=lm, se=FALSE)
+
+cor.test(AG_DF$SPA_Sz, AG_DF$AGscore, method="pearson")    
+```
+\newpage
+
+## Summary
+
+1. Spatial perception accuracy predicts overall math score, pre-algebra, trig 
+2. WM efficiency predicts overall math score, trig (almost), intermediate algebra/geometry
+3. WM accuracy predicts intermediate algebra/geometry
+4. Abstract reasoning accuracy predicts pre-algebra
+

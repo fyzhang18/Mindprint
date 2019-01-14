@@ -1,0 +1,234 @@
+---
+title: "Untitled"
+author: "Felicia Zhang"
+date: '2018-12-30'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(shiny)
+library(ggplot2) 
+library(zoo)
+library(reshape)
+library(plyr)
+library(dplyr)
+library(scales) 
+library(data.table)
+library(signal)
+library(matrixStats)
+library(lme4)
+library(arm)
+library(broom)
+library(tidyr)
+library(wesanderson)
+library(car)
+library(lmerTest)
+library(rpart)
+library(rpart.plot)
+library(partykit)
+
+##################
+# create df with tree results
+treemap <- data.frame(SATSubject=character(19), levelone=character(19), leveltwo=character(19), levelthree=character(19), node=character(19), onesd_lower=character(19), onesd_higher=character(19), twosd_lower=character(19), twosd_higher=character(19), stringsAsFactors=FALSE)
+
+treemap[1,] <- c("reading","0","99","99","2","23","31","19","35")
+treemap[2,] <- c("reading","1","0","99","4","25","33", "21","36")
+treemap[3,] <- c("reading","1","1","99","5","29","35", "26","36")
+
+treemap[4,] <- c("writing","0","99","99","2","23","31", "19","35")
+treemap[5,] <- c("writing","1","0","99","4","25","33", "21","36")
+treemap[6,] <- c("writing","1","1","99","5","29","35", "26","36")
+
+treemap[7,] <- c("math","0","0","99","3","25","29", "23","31")
+treemap[8,] <- c("math","0","1","99","4","26","34", "22","36")
+treemap[9,] <- c("math","1","0","99","6","26","34", "22","36")
+treemap[10,] <- c("math","1","1","99","7","30","36", "27","36")
+
+##################
+# create df to make base graph
+foo <- data.frame(SATSubject=character(3), Score=numeric(3))
+subject <- c("Reading", "Writing", "Math")
+foo$SATSubject <- subject
+foo$SATSubject <- factor(foo$SATSubject, levels = foo$SATSubject)
+foo$Score <- 40
+
+# create vectors to hold info
+aa <- c("reading", NA, NA, NA)
+bb <- c("writing", NA, NA, NA)
+cc <- c("math", NA, NA, NA)
+
+################## SHINY UI ################## 
+
+ui <- fluidPage(    
+  
+  # Give the page a title
+  titlePanel("SAT Report"),
+  
+  # Generate a row with a sidebar
+  sidebarLayout(      
+    
+    # Define the sidebar with one input
+    sidebarPanel(
+      numericInput('StudentID', 'Student ID', 1),
+      numericInput('VMEM_eff', 'Verbal Memory Efficiency', 1),
+      numericInput('ABF_eff', 'Flexible Thinking Efficiency', 1),      
+      numericInput('LAN_Az', 'Verbal Reasoning Accuracy', 1),
+      numericInput('NVR_Az', 'Abstract Reasoning Accuracy', 1),
+      numericInput('ReadingSAT', 'Student Reading Score', 10),
+      numericInput('WritingSAT', 'Student Writing Score', 10),
+      numericInput('MathSAT', 'Student Math Score', 10),
+      submitButton("Update Chart")
+    ),
+    mainPanel(
+      plotOutput("SATPlot",height=350, width=650)  
+    )
+  )
+)
+
+################## SHINY SERVER ################## 
+server <- function(input, output, session) {
+
+  output$SATPlot <- renderPlot({
+    
+    for (i in 1:4) { 
+      #reading
+      if (i==1) { 
+        if (input$LAN_Az < 0.418) {
+          aa[2] <- 0
+          aa[3] <- 99
+          aa[4] <- 99             
+        } else {
+          aa[2] <- 1
+        }
+        if (aa[2]==1) {
+          if (input$VMEM_eff < 0.346) {
+            aa[3] <- 0
+            aa[4] <- 99             
+          } else {
+            aa[3] <- 1
+            aa[4] <- 99             
+          }
+        }
+      }
+      #writing
+      if (i==2) { 
+        if (input$LAN_Az < 0.418) {
+          bb[2] <- 0
+          bb[3] <- 99
+          bb[4] <- 99            
+        } else {
+          bb[2] <- 1
+        }
+        if (bb[2]==1) {
+          if (input$VMEM_eff < 0.346) {
+            bb[3] <- 0
+            bb[4] <- 99             
+          } else {
+            bb[3] <- 1
+            bb[4] <- 99             
+          }
+        }
+      }
+      #math
+      if (i==3) { 
+        if (input$ABF_eff < 0.267) {
+          dd[2] <- 0
+        } else {
+          dd[2] <- 1
+        }
+        if (dd[2]==1) {
+          if (input$NVR_Az < 1.149) {
+            dd[3] <- 0
+            dd[4] <- 99
+          } else {
+            dd[3] <- 1
+            dd[4] <- 99
+          }
+        }
+        if (dd[2]==0) {
+          if (input$NVR_Az < 1.149) {
+            dd[3] <- 0
+            dd[4] <- 99
+          } else {
+            dd[3] <- 1
+            dd[4] <- 99
+          }       
+        }
+      }
+    }
+    
+    for (i in 1:length(treemap$SATSubject)) { 
+      zz <- as.matrix(treemap)[i,1:4]
+      if (all(aa==zz)) {
+        readingrow <- i
+      }
+      if (all(bb==zz)) {
+        englishrow <- i
+      }
+      if (all(dd==zz)) {
+        mathrow <- i
+      }    
+    }
+    
+    # 2 SD interval  
+    aa <- as.numeric(treemap$twosd_lower[readingrow]) # lower reading
+    bb <- as.numeric(treemap$twosd_lower[englishrow]) # lower english
+    dd <- as.numeric(treemap$twosd_lower[mathrow]) # lower math
+    ee <- as.numeric(treemap$twosd_higher[readingrow]) # high reading
+    ff <- as.numeric(treemap$twosd_higher[englishrow]) # high english
+    hh <- as.numeric(treemap$twosd_higher[mathrow]) # high math
+
+    # 1 SD interval  
+    #a <- as.numeric(treemap$onesd_lower[readingrow]) # lower reading
+    #b <- as.numeric(treemap$onesd_lower[englishrow]) # lower english
+    #c <- as.numeric(treemap$onesd_lower[sciencerow]) # lower science
+    #d <- as.numeric(treemap$onesd_lower[mathrow]) # lower math
+    e <- as.numeric(treemap$onesd_higher[readingrow]) # high reading
+    f <- as.numeric(treemap$onesd_higher[englishrow]) # high english
+    h <- as.numeric(treemap$onesd_higher[mathrow]) # high math   
+    
+    # PLOT
+    ggplot(foo, aes(SATSubject, Score))+
+      theme_bw()+
+      theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+      geom_bar(stat="identity",fill="#f8ecb8", colour="#f8ecb8")+
+      theme(axis.title = element_text(face="bold", size=20), axis.title.x=element_blank(), axis.title.y=element_blank())+
+      theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+      scale_y_continuous(limits=c(0,41),breaks=seq(1,40,3))+
+      # reading 2sd interval
+      geom_rect(data=NULL,aes(xmin=0.55,xmax=1.45,ymin=aa,ymax=ee),color=NA,fill="#56B4E9",alpha=0.1)+
+      # writing 2sd interval
+      geom_rect(data=NULL,aes(xmin=1.55,xmax=2.45,ymin=bb,ymax=ff),color=NA,fill="#56B4E9",alpha=0.1)+
+      # math 2sd interval
+      geom_rect(data=NULL,aes(xmin=2.55,xmax=3.45,ymin=dd,ymax=hh),color=NA,fill="#4aae47",alpha=0.1)+
+      # reading 1sd interval
+      geom_rect(data=NULL,aes(xmin=0.55,xmax=1.45,ymin=aa,ymax=e),color=NA,fill="#56B4E9",alpha=0.1)+
+      # writing 1sd interval
+      geom_rect(data=NULL,aes(xmin=1.55,xmax=2.45,ymin=bb,ymax=f),color=NA,fill="#56B4E9",alpha=0.1)+
+      # math 1sd interval
+      geom_rect(data=NULL,aes(xmin=2.55,xmax=3.45,ymin=dd,ymax=h),color=NA,fill="#4aae47",alpha=0.1)+      
+      # reading
+      geom_segment(aes(x = 0.55, y = input$ReadingSAT, xend = 1.45, yend = input$ReadingSAT), size=3, color="#00608f")+
+      # writing
+      geom_segment(aes(x = 1.55, y = input$WritingSAT, xend = 2.45, yend = input$WritingSAT), size=3, color="#00608f")+
+      # math
+      geom_segment(aes(x = 2.55, y = input$MathSAT, xend = 3.45, yend = input$MathSAT), size=3, color="#4aae47")+
+      
+      # add text for 2sd
+      annotate("text", x=1.25, y=aa, label= aa, size = 7)+
+      annotate("text", x=1.25, y=ee, label= ee, size = 7)+
+      annotate("text", x=2.25, y=bb, label= bb, size = 7)+
+      annotate("text", x=2.25, y=ff, label= ff, size = 7)+
+      annotate("text", x=3.25, y=dd, label= dd, size = 7)+
+      annotate("text", x=3.25, y=hh, label= hh, size = 7)+
+      # add test for 1sd, don't want lower end
+      annotate("text", x=1, y=e, label= e, size = 7)+
+      annotate("text", x=2, y=f, label= f, size = 7)+
+      annotate("text", x=3, y=h, label= h, size = 7)+      
+      coord_flip()
+
+  })
+}
+
+shinyApp(ui=ui, server = server)
+``` 

@@ -1,0 +1,380 @@
+---
+title: "MCAS Data"
+author: "Felicia Zhang"
+date: '2018-12-19'
+output: pdf_document
+toc: yes
+toc_depth: 2
+fontsize: 12pt
+fig_height: 6
+fig_width: 7
+
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+## LOAD PACKAGES
+
+library(ggplot2) 
+library(zoo)
+library(reshape)
+library(plyr)
+library(dplyr)
+library(scales) 
+library(data.table)
+library(signal)
+library(matrixStats)
+library(lme4)
+library(arm)
+library(broom)
+library(tidyr)
+library(wesanderson)
+library(readxl)    
+library(extrafont)
+library(glmnet)
+library(GGally)
+library(readxl)
+library(corrplot)
+library(GGally)
+library(rpart)
+library(rpart.plot)
+library(partykit)
+library(knitr)
+library(readxl)
+library(ggcorrplot)
+```
+
+```{r, include=FALSE, warning=FALSE}
+## LOAD MCAS DATA
+
+MCAS <- read_xlsx("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/MCAS/MCASData_121818.xlsx")
+
+## LOAD MINDPRINT DATA
+
+MindprintDF <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/MCAS/Mindprint_12152018.csv")
+
+# Mindprint scores are taken at end of 5th grade
+
+# CLASSIFICATION TREE: rpart uses gini impurty to select splits when performing classification. (entropy, gini, information gain)
+
+# REGRESSION TREE: split criterion is the sum of squares in each partition. The split is made at the variable and split point, that gives minimal sum of squares
+# We fit a regression model to the target variable using each of the independent variables. Then for each independent variable, the data is split at several split points. At each split point, the "error" between the predicted value and the actual values is squared to get a "Sum of Squared Errors (SSE)". The split point errors across the variables are compared and the variable/point yielding the lowest SSE is chosen as the root node/split point. This process is recursively continued.
+```
+
+```{r, include=FALSE, warning=FALSE}
+# PREPROCESS DATA #
+
+# # for Mindprint _SCORE columns, figure out which rows contain "error_error" and if the score is < -2
+# a <- c(which(MindprintDF$SM_SCORE=="error_error"), which(MindprintDF$VMEM_SCORE=="error_error"), which(MindprintDF$ABF_SCORE=="error_error"), which(MindprintDF$LAN_SCORE=="error_error"), which(MindprintDF$NVR_SCORE=="error_error"), which(MindprintDF$WM_SCORE=="error_error"), which(MindprintDF$ATT_SCORE=="error_error"), which(MindprintDF$SMEM_SCORE=="error_error"), which(MindprintDF$SPA_SCORE=="error_error"))
+# 
+# aa <- unique(a)
+# length(aa) #48 students have mindprint error scores
+
+# remove MCAS with missing student ID
+MCAS <- MCAS[-c(which(is.na(MCAS$customer_id))),]
+
+# MCAS scaled scores shouldn't be higher than 560
+MCASGr4Math <- MCAS[-c(which(MCAS$Math_Gr4 > 560)),-c(3:5)]
+MCASGr5Math <- MCAS[-c(which(MCAS$Math_Gr5 > 560)),-c(2,4,5)]
+MCASGr4ELA <- MCAS[,-c(2,3,5)]
+MCASGr5ELA <- MCAS[,-c(2,3,4)]
+
+# remove NA scores
+MCASGr4Math <- na.omit(MCASGr4Math)
+MCASGr5Math <- na.omit(MCASGr5Math)
+MCASGr4ELA <- na.omit(MCASGr4ELA)
+MCASGr5ELA <- na.omit(MCASGr5ELA)
+
+# remove Mindprint scores < -2 and say ERROR
+a <- which(MindprintDF$SM_SCORE=="error_error")
+
+a <- which(MindprintDF$VMEM_SCORE=="error_error")  
+b <- which(MindprintDF$VMEM_Az < -2)       
+c <- intersect(a,b)
+MindprintDF$VMEM_Az[c] <- NA
+MindprintDF$VMEM_Sz[c] <- NA
+MindprintDF$VMEM_eff[c] <- NA
+
+a <- which(MindprintDF$ABF_SCORE=="error_error") 
+b <- which(MindprintDF$ABF_Az < -2) 
+c <- intersect(a,b)
+MindprintDF$ABF_Az[c] <- NA
+MindprintDF$ABF_Sz[c] <- NA
+MindprintDF$ABF_eff[c] <- NA
+
+a <- which(MindprintDF$LAN_SCORE=="error_error") 
+b <- which(MindprintDF$LAN_Az < -2) 
+c <- intersect(a,b)
+MindprintDF$LAN_Az[c] <- NA
+MindprintDF$LAN_Sz[c] <- NA
+MindprintDF$LAN_eff[c] <- NA
+
+a <- which(MindprintDF$NVR_SCORE=="error_error") 
+b <- which(MindprintDF$NVR_Az < -2) 
+c <- intersect(a,b)
+MindprintDF$NVR_Az[c] <- NA
+MindprintDF$NVR_Sz[c] <- NA
+MindprintDF$NVR_eff[c] <- NA
+
+a <- which(MindprintDF$WM_SCORE=="error_error") 
+b <- which(MindprintDF$WM_Az < -2) 
+c <- intersect(a,b)
+MindprintDF$WM_Az[c] <- NA
+MindprintDF$WM_Sz[c] <- NA
+MindprintDF$WM_EFFICIENCY[c] <- NA
+
+a <- which(MindprintDF$ATT_SCORE=="error_error") 
+b <- which(MindprintDF$ATT_Az < -2) 
+c <- intersect(a,b)
+MindprintDF$ATT_Sz[c] <- NA
+MindprintDF$ATT_Az[c] <- NA
+MindprintDF$ATT_EFFICIENCY[c] <- NA
+
+a <- which(MindprintDF$SMEM_SCORE=="error_error") 
+b <- which(MindprintDF$SMEM_Az < -2)
+c <- intersect(a,b)
+MindprintDF$SMEM_Az[c] <- NA
+MindprintDF$SMEM_Sz[c] <- NA
+MindprintDF$SMEM_eff[c] <- NA
+
+a <- which(MindprintDF$SPA_SCORE=="error_error")
+b <- which(MindprintDF$SPA_Az < -2)
+c <- intersect(a,b)
+MindprintDF$SPA_Az[c] <- NA
+MindprintDF$SPA_Sz[c] <- NA
+MindprintDF$SPA_eff[c] <- NA
+
+# Combine Mindprint and MCAS scores
+finalGr4Math <- merge(MindprintDF,MCASGr4Math, by="customer_id")
+finalGr5Math <- merge(MindprintDF,MCASGr5Math, by="customer_id")
+finalGr4ELA <- merge(MindprintDF,MCASGr4ELA, by="customer_id")
+finalGr5ELA <- merge(MindprintDF,MCASGr5ELA, by="customer_id")
+
+# Recombine all data into one DF
+finalGr4Math$Subject <- "Math"
+finalGr4Math$Grade <- 4
+names(finalGr4Math)[46] <- "Score"
+finalGr5Math$Subject <- "Math"
+finalGr5Math$Grade <- 5
+names(finalGr5Math)[46] <- "Score"
+finalGr4ELA$Subject <- "ELA"
+finalGr4ELA$Grade <- 4
+names(finalGr4ELA)[46] <- "Score"
+finalGr5ELA$Subject <- "ELA"
+finalGr5ELA$Grade <- 5
+names(finalGr5ELA)[46] <- "Score"
+
+MCASMP <- rbind(finalGr4Math, finalGr5Math, finalGr4ELA, finalGr5ELA)
+
+write.csv(MCASMP, "MCAS_MP.csv", row.names=TRUE) #save to computer
+```
+
+\newpage
+# Distribution of test scores
+```{r, echo=FALSE, warning=FALSE, fig.align='center', fig.height=4.2}
+ggplot(MCASMP, aes(x=Score, fill=factor(Grade)))+
+  geom_histogram(binwidth=5)+
+  theme_bw()+
+  theme(panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Score", y = "Number of students")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  facet_wrap(~Subject)+
+  theme_bw(base_family = "Times", base_size=14)+
+  theme(legend.position = "top")+  
+  scale_fill_brewer(palette="Set1",name="Grade")+
+  scale_x_continuous(limits=c(430,580),breaks=seq(440,560,20))
+
+```
+
+\newpage
+
+# Correlation of test scores
+```{r, echo=FALSE, warning=FALSE}
+# grouped all the subjects and grades together
+
+foo <- merge(MCASGr4ELA, MCASGr4Math, by = "customer_id")
+foo <- merge(foo, MCASGr5Math, by = "customer_id")
+foo <- merge(foo, MCASGr5ELA, by = "customer_id")
+foo$customer_id <- NULL
+
+# correlation matrix
+corr <- round(cor(foo), 1)
+
+ggcorrplot(corr, method = "square", lab = TRUE, colors = c("#6D9EC1", "white", "#CC79A7"))
+```
+\newpage
+
+```{r, echo=FALSE, warning=FALSE}
+# remove not useful mindprint features
+drops <- c("gender","age","customer_id","SM_SCORE","VMEM_SCORE","ABF_SCORE","LAN_SCORE","NVR_SCORE","WM_SCORE","ATT_SCORE", "SMEM_SCORE", "SPA_SCORE","PROCESSING_SPEED_SCORE")
+
+MCASMP <- MCASMP[ , !(names(MCASMP) %in% drops)]
+
+```
+
+# Tree models
+
+## Grade 4 math
+```{r, echo=FALSE, warning=FALSE, fig.height=6.1}
+foo <- subset(MCASMP, Subject=="Math" & Grade==4)
+
+x <- foo[,1:25]
+
+y <- foo$Score
+
+# combine 
+loo <- cbind(x, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=loo)
+# 
+# printcp(tree) # display the results 
+# plotcp(tree) # visualize cross-validation results 
+# 
+# # 2. find best cp
+# bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+# 
+# # 3. Prune the tree using the best cp.
+# tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot
+plot(as.party(tree), main = "Grade 4 Math", terminal_panel = node_boxplot)
+#box plots of the outcome that we are trying to predict.
+
+# calculate SD and mean
+stats <- aggregate(loo$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(loo$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+
+kable(stats, format = "markdown", align = 'c', row.names=F)
+```
+
+## Grade 5 math
+```{r, echo=FALSE, warning=FALSE, fig.height=6.1}
+foo <- subset(MCASMP, Subject=="Math" & Grade==5)
+
+x <- foo[,1:25]
+
+y <- foo$Score
+
+# combine 
+loo <- cbind(x, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=loo)
+# 
+# printcp(tree) # display the results 
+# plotcp(tree) # visualize cross-validation results 
+# 
+# # 2. find best cp
+# bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+# 
+# # 3. Prune the tree using the best cp.
+# tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot
+plot(as.party(tree), main = "Grade 5 Math")
+#box plots of the outcome that we are trying to predict.
+
+
+# calculate SD and mean
+stats <- aggregate(loo$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(loo$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+
+kable(stats, format = "markdown", align = 'c', row.names=F)
+```
+
+## Grade 4 ELA
+```{r, echo=FALSE, warning=FALSE, fig.height=6.1, fig.width==7.5}
+foo <- subset(MCASMP, Subject=="ELA" & Grade==4)
+
+x <- foo[,1:25]
+
+y <- foo$Score
+
+# combine 
+loo <- cbind(x, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=2, data=loo)
+# 
+# printcp(tree) # display the results 
+# plotcp(tree) # visualize cross-validation results 
+# 
+# # 2. find best cp
+# bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+# 
+# # 3. Prune the tree using the best cp.
+# tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot
+plot(as.party(tree), main = "Grade 4 ELA")
+#box plots of the outcome that we are trying to predict.
+
+# calculate SD and mean
+stats <- aggregate(loo$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(loo$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+
+kable(stats, format = "markdown", align = 'c', row.names=F)
+
+#ID outlier in boxplots
+#PCT = as.party(tree)
+#BP = boxplot(loo$y ~ PCT[1]$fitted[[1]])
+#BP$out
+```
+
+## Grade 5 ELA
+```{r, echo=FALSE, warning=FALSE, fig.height=6.1, fig.width==7.2}
+foo <- subset(MCASMP, Subject=="ELA" & Grade==5)
+
+x <- foo[,1:25]
+
+y <- foo$Score
+
+# combine 
+loo <- cbind(x, y)
+
+# 1. grow tree 
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=loo)
+# 
+# printcp(tree) # display the results 
+# plotcp(tree) # visualize cross-validation results 
+# 
+# # 2. find best cp
+# bestcp <- tree$cptable[which.min(tree$cptable[,"xerror"]),"CP"]
+# 
+# # 3. Prune the tree using the best cp.
+# tree.pruned <- prune(tree, cp = bestcp)
+
+# Plot
+plot(as.party(tree), main = "Grade 5 ELA")
+#box plots of the outcome that we are trying to predict.
+
+# calculate SD and mean
+stats <- aggregate(loo$y, list(tree$where), sd)
+names(stats)[1] <- "node"
+names(stats)[2] <- "sd"
+stats2 <- aggregate(loo$y, list(tree$where), mean)
+names(stats2)[2] <- "mean"
+stats$mean <- stats2$mean
+
+kable(stats, format = "markdown", align = 'c', row.names=F)
+
+#ID outlier in boxplots
+#PCT = as.party(tree)
+#BP = boxplot(loo$y ~ PCT[1]$fitted[[1]])
+#BP$out
+
+```
+
+

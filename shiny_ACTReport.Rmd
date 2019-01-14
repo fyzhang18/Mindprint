@@ -1,0 +1,324 @@
+---
+title: "Untitled"
+author: "Felicia Zhang"
+date: '2018-12-30'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(shiny)
+library(ggplot2) 
+library(zoo)
+library(reshape)
+library(plyr)
+library(dplyr)
+library(scales) 
+library(data.table)
+library(signal)
+library(matrixStats)
+library(lme4)
+library(arm)
+library(broom)
+library(tidyr)
+library(wesanderson)
+library(car)
+library(lmerTest)
+library(rpart)
+library(rpart.plot)
+library(partykit)
+
+##################
+# create df with tree results
+treemap <- data.frame(ACTSubject=character(19), levelone=character(19), leveltwo=character(19), levelthree=character(19), node=character(19), onesd_lower=character(19), onesd_higher=character(19), twosd_lower=character(19), twosd_higher=character(19), stringsAsFactors=FALSE)
+
+treemap[1,] <- c("reading","0","0","0","4","12","20","8","24")
+treemap[2,] <- c("reading","0","0","1","5","18","26", "14","30")
+treemap[3,] <- c("reading","0","1","0","7","18","26", "14","30")
+treemap[4,] <- c("reading","0","1","1","8","21","29", "17","33")
+treemap[5,] <- c("reading","1","99","99","3","26","34", "22","36")
+
+treemap[6,] <- c("english","0","0","99","3","14","22", "10","26")
+treemap[7,] <- c("english","0","1","0","5","17","25", "13","29")
+treemap[8,] <- c("english","0","1","1","6","19","29", "14","34")
+treemap[9,] <- c("english","1","99","99","7","25","35", "20","36")
+
+treemap[10,] <- c("science","0","0","99","3","16","22", "13","25")
+treemap[11,] <- c("science","0","1","0","5","18","26", "14","30")
+treemap[12,] <- c("science","0","1","1","6","20","26", "17","29")
+treemap[13,] <- c("science","1","99","99","7","23","31", "19","35")
+
+treemap[14,] <- c("math","0","0","0","4","16","22", "13","25")
+treemap[15,] <- c("math","0","0","1","5","17","25", "13","29")
+treemap[16,] <- c("math","0","1","0","7","16","24", "12","28")
+treemap[17,] <- c("math","0","1","1","8","20","28", "16","32")
+treemap[18,] <- c("math","1","0","99","10","19","25", "16","28")
+treemap[19,] <- c("math","1","1","99","11","22","32", "17","36")
+
+##################
+# create df to make base graph
+foo <- data.frame(ACTSubject=character(4), Score=numeric(4))
+subject <- c("Reading", "English", "Science", "Math")
+foo$ACTSubject <- subject
+foo$ACTSubject <- factor(foo$ACTSubject, levels = foo$ACTSubject)
+foo$Score <- 36
+
+# create vectors to hold info
+aa <- c("reading", NA, NA, NA)
+bb <- c("english", NA, NA, NA)
+cc <- c("science", NA, NA, NA)
+dd <- c("math", NA, NA, NA)
+
+################## SHINY UI ################## 
+
+ui <- fluidPage(    
+  
+  # Give the page a title
+  titlePanel("ACT Report"),
+  
+  # Generate a row with a sidebar
+  sidebarLayout(      
+    
+    # Define the sidebar with one input
+    sidebarPanel(
+      numericInput('StudentID', 'Student ID', 1),
+      numericInput('VMEM_Az', 'Verbal Memory Accuracy', 1),
+      numericInput('LAN_Az', 'Verbal Reasoning Accuracy', 1),
+      numericInput('LAN_Sz', 'Verbal Reasoning Speed', 1),
+      numericInput('LAN_eff', 'Verbal Reasoning Efficiency', 1),
+      numericInput('NVR_Az', 'Abstract Reasoning Accuracy', 1),
+      numericInput('NVR_eff', 'Abstract Reasoning Efficiency', 1),
+      numericInput('WM_Sz', 'Working Memory Speed', 1),
+      numericInput('SPA_Az', 'Spatial Perception Accuracy', 1),
+      numericInput('SPA_eff', 'Spatial Perception Efficiency', 1),
+      numericInput('MathACT', 'Student Math Score', 10),
+      numericInput('ScienceACT', 'Student Science Score', 10),
+      numericInput('EnglishACT', 'Student English Score', 10),
+      numericInput('ReadingACT', 'Student Reading Score', 10),
+      submitButton("Update Chart")
+    ),
+    mainPanel(
+      plotOutput("ACTPlot",height=400, width=600)  
+    )
+  )
+)
+
+################## SHINY SERVER ################## 
+server <- function(input, output, session) {
+
+  output$ACTPlot <- renderPlot({
+    
+    for (i in 1:4) { 
+      #reading
+      if (i==1) { 
+        if (input$LAN_eff < 0.844) {
+          aa[2] <- 0
+        } else {
+          aa[2] <- 1
+        }
+        if (aa[2]==0) {
+          if (input$NVR_eff < 0.157) {
+            aa[3] <- 0
+          } else {
+            aa[3] <- 1
+          }
+          if (aa[3]==0) {
+            if (input$WM_Sz < -0.279) {
+              aa[4] <- 0
+            } else {
+              aa[4] <- 1
+            }
+          }
+          if (aa[3]==1) {
+            if (input$LAN_Sz < 0.265) {
+              aa[4] <- 0
+            } else {
+              aa[4] <- 1
+            }
+          } 
+        }
+        if (aa[2]==1) {
+          aa[3] <- 99
+          aa[4] <- 99
+        }
+      }
+      #english
+      if (i==2) { 
+        if (input$LAN_eff < 0.94) {
+          bb[2] <- 0
+        } else {
+          bb[2] <- 1
+        }
+        if (bb[2]==0) {
+          if (input$LAN_eff < -0.197) {
+            bb[3] <- 0
+          } else {
+            bb[3] <- 1
+          }
+          if (bb[3]==1) {
+            if (input$SPA_Az < 0.148) {
+              bb[4] <- 0
+            } else {
+              bb[4] <- 1
+            }
+          } 
+        }
+        if (bb[2]==1) {
+          bb[3] <- 99
+          bb[4] <- 99
+        }        
+      }
+      #math
+      if (i==3) { 
+        if (input$NVR_eff < 0.302) {
+          dd[2] <- 0
+        } else {
+          dd[2] <- 1
+        }
+        if (dd[2]==1) {
+          if (input$LAN_Sz < 0.27) {
+            dd[3] <- 0
+          } else {
+            dd[3] <- 1
+          }
+          dd[4] <- 99
+        }
+        if (dd[2]==0) {
+          if (input$LAN_Az < 0.418) {
+            dd[3] <- 0
+          } else {
+            dd[3] <- 1
+          }       
+          if (dd[3]==0) {
+            if (input$VMEM_Az < 0.459) {
+              dd[4] <- 0
+            } else {
+              dd[4] <- 1
+            }
+          }
+          if (dd[3]==1) {
+            if (input$SPA_eff < -0.271) {
+              dd[4] <- 0
+            } else {
+              dd[4] <- 1
+            }
+          } 
+        }
+      }
+      #science
+      if (i==4) { 
+        if (input$LAN_eff < 0.93) {
+          cc[2] <- 0
+        } else {
+          cc[2] <- 1
+        }
+        if (cc[2]==0) {
+          if (input$LAN_eff < -0.305) {
+            cc[3] <- 0
+          } else {
+            cc[3] <- 1
+          }
+          if (cc[3]==1) {
+            if (input$NVR_Az < 1.264) {
+              cc[4] <- 0
+            } else {
+              cc[4] <- 1
+            }
+          } 
+        }
+        if (cc[2]==1) {
+          cc[3] <- 99
+          cc[4] <- 99
+        }         
+      }
+    }
+    
+    for (i in 1:length(treemap$ACTSubject)) { 
+      zz <- as.matrix(treemap)[i,1:4]
+      if (all(aa==zz)) {
+        readingrow <- i
+      }
+      if (all(bb==zz)) {
+        englishrow <- i
+      }
+      if (all(cc==zz)) {
+        sciencerow <- i
+      }
+      if (all(dd==zz)) {
+        mathrow <- i
+      }    
+    }
+    
+    # 2 SD interval  
+    aa <- as.numeric(treemap$twosd_lower[readingrow]) # lower reading
+    bb <- as.numeric(treemap$twosd_lower[englishrow]) # lower english
+    cc <- as.numeric(treemap$twosd_lower[sciencerow]) # lower science
+    dd <- as.numeric(treemap$twosd_lower[mathrow]) # lower math
+    ee <- as.numeric(treemap$twosd_higher[readingrow]) # high reading
+    ff <- as.numeric(treemap$twosd_higher[englishrow]) # high english
+    gg <- as.numeric(treemap$twosd_higher[sciencerow]) # high science
+    hh <- as.numeric(treemap$twosd_higher[mathrow]) # high math
+
+    # 1 SD interval  
+    #a <- as.numeric(treemap$onesd_lower[readingrow]) # lower reading
+    #b <- as.numeric(treemap$onesd_lower[englishrow]) # lower english
+    #c <- as.numeric(treemap$onesd_lower[sciencerow]) # lower science
+    #d <- as.numeric(treemap$onesd_lower[mathrow]) # lower math
+    e <- as.numeric(treemap$onesd_higher[readingrow]) # high reading
+    f <- as.numeric(treemap$onesd_higher[englishrow]) # high english
+    g <- as.numeric(treemap$onesd_higher[sciencerow]) # high science
+    h <- as.numeric(treemap$onesd_higher[mathrow]) # high math   
+    
+    # PLOT
+    ggplot(foo, aes(ACTSubject, Score))+
+      theme_bw()+
+      theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+      geom_bar(stat="identity",fill="#f8ecb8", colour="#f8ecb8")+
+      theme(axis.title = element_text(face="bold", size=20), axis.title.x=element_blank(), axis.title.y=element_blank())+
+      theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+      scale_y_continuous(limits=c(0,37),breaks=seq(1,36,5))+
+      # reading 2sd interval
+      geom_rect(data=NULL,aes(xmin=0.55,xmax=1.45,ymin=aa,ymax=ee),color=NA,fill="#56B4E9",alpha=0.1)+
+      # english 2sd interval
+      geom_rect(data=NULL,aes(xmin=1.55,xmax=2.45,ymin=bb,ymax=ff),color=NA,fill="#56B4E9",alpha=0.1)+
+      # science 2sd interval
+      geom_rect(data=NULL,aes(xmin=2.55,xmax=3.45,ymin=cc,ymax=gg),color=NA,fill="#4aae47",alpha=0.1)+
+      # math 2sd interval
+      geom_rect(data=NULL,aes(xmin=3.55,xmax=4.45,ymin=dd,ymax=hh),color=NA,fill="#4aae47",alpha=0.1)+
+      # reading 1sd interval
+      geom_rect(data=NULL,aes(xmin=0.55,xmax=1.45,ymin=aa,ymax=e),color=NA,fill="#56B4E9",alpha=0.1)+
+      # english 1sd interval
+      geom_rect(data=NULL,aes(xmin=1.55,xmax=2.45,ymin=bb,ymax=f),color=NA,fill="#56B4E9",alpha=0.1)+
+      # science 1sd interval
+      geom_rect(data=NULL,aes(xmin=2.55,xmax=3.45,ymin=cc,ymax=g),color=NA,fill="#4aae47",alpha=0.1)+
+      # math 1sd interval
+      geom_rect(data=NULL,aes(xmin=3.55,xmax=4.45,ymin=dd,ymax=h),color=NA,fill="#4aae47",alpha=0.1)+      
+      # reading
+      geom_segment(aes(x = 0.55, y = input$ReadingACT, xend = 1.45, yend = input$ReadingACT), size=3, color="#00608f")+
+      # english
+      geom_segment(aes(x = 1.55, y = input$EnglishACT, xend = 2.45, yend = input$EnglishACT), size=3, color="#00608f")+
+      # science
+      geom_segment(aes(x = 2.55, y = input$ScienceACT, xend = 3.45, yend = input$ScienceACT), size=3, color="#4aae47")+
+      # math
+      geom_segment(aes(x = 3.55, y = input$MathACT, xend = 4.45, yend = input$MathACT), size=3, color="#4aae47")+
+      
+      # add text for 2sd
+      annotate("text", x=1.25, y=aa, label= aa, size = 7)+
+      annotate("text", x=1.25, y=ee, label= ee, size = 7)+
+      annotate("text", x=2.25, y=bb, label= bb, size = 7)+
+      annotate("text", x=2.25, y=ff, label= ff, size = 7)+
+      annotate("text", x=3.25, y=cc, label= cc, size = 7)+
+      annotate("text", x=3.25, y=gg, label= gg, size = 7)+
+      annotate("text", x=4.25, y=dd, label= dd, size = 7)+
+      annotate("text", x=4.25, y=hh, label= hh, size = 7)+
+      # add test for 1sd, don't want lower end
+      annotate("text", x=1, y=e, label= e, size = 7)+
+      annotate("text", x=2, y=f, label= f, size = 7)+
+      annotate("text", x=3, y=g, label= g, size = 7)+
+      annotate("text", x=4, y=h, label= h, size = 7)+      
+      coord_flip()
+
+  })
+}
+
+shinyApp(ui=ui, server = server)
+``` 

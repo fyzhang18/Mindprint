@@ -1,0 +1,1870 @@
+---
+title: "Mindprint - Math - 7 bins"
+author: "Felicia Zhang"
+date: '2018-08-05'
+output: pdf_document
+toc: yes
+toc_depth: 2
+fontsize: 12pt
+fig_height: 5
+fig_width: 7
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+library(ggplot2) 
+library(zoo)
+library(reshape)
+library(plyr)
+library(dplyr)
+library(scales) 
+library(data.table)
+library(signal)
+library(matrixStats)
+library(lme4)
+library(arm)
+library(broom)
+library(tidyr)
+library(wesanderson)
+library(readxl)    
+library(extrafont)
+
+## 1. Load ACT/SAT data
+
+#LOAD MULTIPLE EXCEL SHEETS INTO SEPARATE DFS
+
+#get names of sheets
+sheets <- readxl::excel_sheets("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Math.xlsx")
+
+#load in excel data as 1 big file
+lst <- lapply(sheets, function(sheet) 
+  readxl::read_excel("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Math.xlsx", sheet = sheet)
+)
+
+#prepare names
+names(lst) <- sheets
+
+#turn it into DF
+list2env(lst, envir = .GlobalEnv)
+
+#difference between 70C, 72C, Combo v2.4: three different tests based on where we had sufficient student data, noting the one called the Combo is a mixture of SAT and ACT questions.
+
+#0 = incorrect, 1 = correct, 2 = skip
+
+## 2. Load mindprint data
+mindprintdata <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/mindprint_data.csv", header=T)
+```
+
+```{r, echo=FALSE, warning=FALSE, include=FALSE}
+## SET UP DF
+names(`70C`)[2:61] = 1:60
+names(`72C`)[2:61] = 1:60
+
+# Mindprint subjects
+subs <- unique(mindprintdata$student_id)
+
+# duplicates = subID 441, 8826, 4573, 
+
+# Find matching subjects in 70C
+z <- which(`70C`$Question=="student_id")
+zz <- length(`70C`$Question)
+foo <- `70C`[(z+1):zz,]
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+colnames(foo)[1] <- "student_id"
+
+foofinal1 <- merge(mindprintdata, foo)
+
+# Find matching subjects in 72C
+z <- which(`72C`$Question=="student_id")
+zz <- length(`72C`$Question)
+foo <- `72C`[(z+1):zz,]
+foo[] <- lapply(foo, function(x) as.numeric(as.character(x)))
+colnames(foo)[1] <- "student_id"
+
+foofinal2 <- merge(mindprintdata, foo)
+
+finalDF <- rbind(foofinal1,foofinal2)
+
+# calculate ACT math score (total number of questions = 60)
+finalDF$ACTmathraw <- rowSums(finalDF[43:102])
+finalDF$ACTmathscore <- finalDF$ACTmathraw / 60
+
+# remove missing data
+finalDF2 <- na.omit(finalDF)
+```
+
+\newpage
+
+# ACT Math (n = 61) | 7 bins
+## Overall score 
+### Visual motor
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(finalDF2, SM_SCORE) %>%
+  summarise(
+    avgMath = mean(ACTmathscore, na.rm = TRUE),
+    seMAth=sd(ACTmathscore, na.rm = TRUE)/sqrt(length(ACTmathscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$SM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$SM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$SM_SCORE=="low_expected"] <- 3
+goo$bin[goo$SM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$SM_SCORE=="high_expected"] <- 5
+goo$bin[goo$SM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$SM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Visual motor", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Verbal memory
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(finalDF2, VMEM_SCORE) %>%
+  summarise(
+    avgMath = mean(ACTmathscore, na.rm = TRUE),
+    seMAth=sd(ACTmathscore, na.rm = TRUE)/sqrt(length(ACTmathscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$VMEM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$VMEM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$VMEM_SCORE=="low_expected"] <- 3
+goo$bin[goo$VMEM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$VMEM_SCORE=="high_expected"] <- 5
+goo$bin[goo$VMEM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$VMEM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Verbal memory", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Flexible thinking
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(finalDF2, ABF_SCORE) %>%
+  summarise(
+    avgMath = mean(ACTmathscore, na.rm = TRUE),
+    seMAth=sd(ACTmathscore, na.rm = TRUE)/sqrt(length(ACTmathscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$ABF_SCORE=="low_weakness"] <- 1
+goo$bin[goo$ABF_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$ABF_SCORE=="low_expected"] <- 3
+goo$bin[goo$ABF_SCORE=="medium_expected"] <- 4
+goo$bin[goo$ABF_SCORE=="high_expected"] <- 5
+goo$bin[goo$ABF_SCORE=="medium_strength"] <- 6
+goo$bin[goo$ABF_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Flexible thinking", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Verbal reasoning 
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(finalDF2, LAN_SCORE) %>%
+  summarise(
+    avgMath = mean(ACTmathscore, na.rm = TRUE),
+    seMAth=sd(ACTmathscore, na.rm = TRUE)/sqrt(length(ACTmathscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$LAN_SCORE=="low_weakness"] <- 1
+goo$bin[goo$LAN_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$LAN_SCORE=="low_expected"] <- 3
+goo$bin[goo$LAN_SCORE=="medium_expected"] <- 4
+goo$bin[goo$LAN_SCORE=="high_expected"] <- 5
+goo$bin[goo$LAN_SCORE=="medium_strength"] <- 6
+goo$bin[goo$LAN_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Verbal reasoning", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Abstract reasoning
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(finalDF2, NVR_SCORE) %>%
+  summarise(
+    avgMath = mean(ACTmathscore, na.rm = TRUE),
+    seMAth=sd(ACTmathscore, na.rm = TRUE)/sqrt(length(ACTmathscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$NVR_SCORE=="low_weakness"] <- 1
+goo$bin[goo$NVR_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$NVR_SCORE=="low_expected"] <- 3
+goo$bin[goo$NVR_SCORE=="medium_expected"] <- 4
+goo$bin[goo$NVR_SCORE=="high_expected"] <- 5
+goo$bin[goo$NVR_SCORE=="medium_strength"] <- 6
+goo$bin[goo$NVR_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Abstract reasoning", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Working memory
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(finalDF2, WM_SCORE) %>%
+  summarise(
+    avgMath = mean(ACTmathscore, na.rm = TRUE),
+    seMAth=sd(ACTmathscore, na.rm = TRUE)/sqrt(length(ACTmathscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$WM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$WM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$WM_SCORE=="low_expected"] <- 3
+goo$bin[goo$WM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$WM_SCORE=="high_expected"] <- 5
+goo$bin[goo$WM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$WM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Working memory", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Attention
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(finalDF2, ATT_SCORE) %>%
+  summarise(
+    avgMath = mean(ACTmathscore, na.rm = TRUE),
+    seMAth=sd(ACTmathscore, na.rm = TRUE)/sqrt(length(ACTmathscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$ATT_SCORE=="low_weakness"] <- 1
+goo$bin[goo$ATT_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$ATT_SCORE=="low_expected"] <- 3
+goo$bin[goo$ATT_SCORE=="medium_expected"] <- 4
+goo$bin[goo$ATT_SCORE=="high_expected"] <- 5
+goo$bin[goo$ATT_SCORE=="medium_strength"] <- 6
+goo$bin[goo$ATT_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Attention", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Visual memory
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(finalDF2, VMEM_SCORE) %>%
+  summarise(
+    avgMath = mean(ACTmathscore, na.rm = TRUE),
+    seMAth=sd(ACTmathscore, na.rm = TRUE)/sqrt(length(ACTmathscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$VMEM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$VMEM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$VMEM_SCORE=="low_expected"] <- 3
+goo$bin[goo$VMEM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$VMEM_SCORE=="high_expected"] <- 5
+goo$bin[goo$VMEM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$VMEM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Visual memory", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Spatial perception (p = 0.004, r = 0.95)
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(finalDF2, SPA_SCORE) %>%
+  summarise(
+    avgMath = mean(ACTmathscore, na.rm = TRUE),
+    seMAth=sd(ACTmathscore, na.rm = TRUE)/sqrt(length(ACTmathscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$SPA_SCORE=="low_weakness"] <- 1
+goo$bin[goo$SPA_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$SPA_SCORE=="low_expected"] <- 3
+goo$bin[goo$SPA_SCORE=="medium_expected"] <- 4
+goo$bin[goo$SPA_SCORE=="high_expected"] <- 5
+goo$bin[goo$SPA_SCORE=="medium_strength"] <- 6
+goo$bin[goo$SPA_SCORE=="high_strength"] <- 7
+
+goo <- subset(goo, bin > 0)
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Spatial perception", y = "ACT math score (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson") 
+```
+\newpage
+
+```{r, echo=FALSE, warning=FALSE, include=FALSE}
+# figure out which subsection each question corresponded to
+foo <- `70C`[c(1,2,3,4,20),]
+subsection <- t(foo)
+subsection <- data.frame(subsection)
+subsection <- subsection[-1, ] 
+
+colnames(subsection)[1] <- "test"
+colnames(subsection)[2] <- "question"
+colnames(subsection)[3] <- "section"
+colnames(subsection)[4] <- "subsection"
+colnames(subsection)[5] <- "difficulty"
+
+EA <- subset(subsection, subsection=="EA")
+GT <- subset(subsection, subsection=="GT")
+AG <- subset(subsection, subsection=="AG")
+
+EAnum <- unique(EA$question)
+EAnum <- as.numeric(EAnum)
+GTnum <- unique(GT$question)
+GTnum <- as.numeric(GTnum)
+AGnum <- unique(AG$question)
+AGnum <- as.numeric(AGnum)
+
+#all questions
+questions <- finalDF2[,43:102]
+
+#AG DF
+AG_DF <- questions[,AGnum]
+AG_DF$AGraw <- rowSums(AG_DF)
+AG_DF$AGscore <- AG_DF$AGraw / length(AGnum)
+AG_DF <- cbind(finalDF2[,1:42],AG_DF)
+
+#EA DF
+EA_DF <- questions[,EAnum]
+EA_DF$EAraw <- rowSums(EA_DF)
+EA_DF$EAscore <- EA_DF$EAraw / length(EAnum)
+EA_DF <- cbind(finalDF2[,1:42],EA_DF)
+
+#GT DF
+GT_DF <- questions[,GTnum]
+GT_DF$GTraw <- rowSums(GT_DF)
+GT_DF$GTscore <- GT_DF$GTraw / length(GTnum)
+GT_DF <- cbind(finalDF2[,1:42],GT_DF)
+```
+
+## EA/ Pre-Algebra/Elementary Algebra Subsection
+
+### Visual motor
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(EA_DF,SM_SCORE) %>%
+  summarise(
+    avgMath = mean(EAscore, na.rm = TRUE),
+    seMAth=sd(EAscore, na.rm = TRUE)/sqrt(length(EAscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$SM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$SM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$SM_SCORE=="low_expected"] <- 3
+goo$bin[goo$SM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$SM_SCORE=="high_expected"] <- 5
+goo$bin[goo$SM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$SM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Visual motor", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Verbal memory
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(EA_DF, VMEM_SCORE) %>%
+  summarise(
+    avgMath = mean(EAscore, na.rm = TRUE),
+    seMAth=sd(EAscore, na.rm = TRUE)/sqrt(length(EAscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$VMEM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$VMEM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$VMEM_SCORE=="low_expected"] <- 3
+goo$bin[goo$VMEM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$VMEM_SCORE=="high_expected"] <- 5
+goo$bin[goo$VMEM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$VMEM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Verbal memory", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Flexible thinking
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(EA_DF, ABF_SCORE) %>%
+  summarise(
+    avgMath = mean(EAscore, na.rm = TRUE),
+    seMAth=sd(EAscore, na.rm = TRUE)/sqrt(length(EAscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$ABF_SCORE=="low_weakness"] <- 1
+goo$bin[goo$ABF_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$ABF_SCORE=="low_expected"] <- 3
+goo$bin[goo$ABF_SCORE=="medium_expected"] <- 4
+goo$bin[goo$ABF_SCORE=="high_expected"] <- 5
+goo$bin[goo$ABF_SCORE=="medium_strength"] <- 6
+goo$bin[goo$ABF_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Flexible thinking", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Verbal reasoning 
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(EA_DF, LAN_SCORE) %>%
+  summarise(
+    avgMath = mean(EAscore, na.rm = TRUE),
+    seMAth=sd(EAscore, na.rm = TRUE)/sqrt(length(EAscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$LAN_SCORE=="low_weakness"] <- 1
+goo$bin[goo$LAN_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$LAN_SCORE=="low_expected"] <- 3
+goo$bin[goo$LAN_SCORE=="medium_expected"] <- 4
+goo$bin[goo$LAN_SCORE=="high_expected"] <- 5
+goo$bin[goo$LAN_SCORE=="medium_strength"] <- 6
+goo$bin[goo$LAN_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Verbal reasoning", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Abstract reasoning
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(EA_DF, NVR_SCORE) %>%
+  summarise(
+    avgMath = mean(EAscore, na.rm = TRUE),
+    seMAth=sd(EAscore, na.rm = TRUE)/sqrt(length(EAscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$NVR_SCORE=="low_weakness"] <- 1
+goo$bin[goo$NVR_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$NVR_SCORE=="low_expected"] <- 3
+goo$bin[goo$NVR_SCORE=="medium_expected"] <- 4
+goo$bin[goo$NVR_SCORE=="high_expected"] <- 5
+goo$bin[goo$NVR_SCORE=="medium_strength"] <- 6
+goo$bin[goo$NVR_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Abstract reasoning", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Working memory
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(EA_DF, WM_SCORE) %>%
+  summarise(
+    avgMath = mean(EAscore, na.rm = TRUE),
+    seMAth=sd(EAscore, na.rm = TRUE)/sqrt(length(EAscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$WM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$WM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$WM_SCORE=="low_expected"] <- 3
+goo$bin[goo$WM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$WM_SCORE=="high_expected"] <- 5
+goo$bin[goo$WM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$WM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Working memory", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Attention
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(EA_DF, ATT_SCORE) %>%
+  summarise(
+    avgMath = mean(EAscore, na.rm = TRUE),
+    seMAth=sd(EAscore, na.rm = TRUE)/sqrt(length(EAscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$ATT_SCORE=="low_weakness"] <- 1
+goo$bin[goo$ATT_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$ATT_SCORE=="low_expected"] <- 3
+goo$bin[goo$ATT_SCORE=="medium_expected"] <- 4
+goo$bin[goo$ATT_SCORE=="high_expected"] <- 5
+goo$bin[goo$ATT_SCORE=="medium_strength"] <- 6
+goo$bin[goo$ATT_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Attention", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Visual memory
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(EA_DF, VMEM_SCORE) %>%
+  summarise(
+    avgMath = mean(EAscore, na.rm = TRUE),
+    seMAth=sd(EAscore, na.rm = TRUE)/sqrt(length(EAscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$VMEM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$VMEM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$VMEM_SCORE=="low_expected"] <- 3
+goo$bin[goo$VMEM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$VMEM_SCORE=="high_expected"] <- 5
+goo$bin[goo$VMEM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$VMEM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Visual memory", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Spatial perception (p = 0.001, r = 0.97)
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(EA_DF,SPA_SCORE) %>%
+  summarise(
+    avgMath = mean(EAscore, na.rm = TRUE),
+    seMAth=sd(EAscore, na.rm = TRUE)/sqrt(length(EAscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$SPA_SCORE=="low_weakness"] <- 1
+goo$bin[goo$SPA_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$SPA_SCORE=="low_expected"] <- 3
+goo$bin[goo$SPA_SCORE=="medium_expected"] <- 4
+goo$bin[goo$SPA_SCORE=="high_expected"] <- 5
+goo$bin[goo$SPA_SCORE=="medium_strength"] <- 6
+goo$bin[goo$SPA_SCORE=="high_strength"] <- 7
+
+goo <- subset(goo, bin > 0)
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Spatial perception", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson") 
+```
+\newpage
+
+## GT/ Plane Geometry/Trigonometry Subsection
+
+### Visual motor
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(GT_DF,SM_SCORE) %>%
+  summarise(
+    avgMath = mean(GTscore, na.rm = TRUE),
+    seMAth=sd(GTscore, na.rm = TRUE)/sqrt(length(GTscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$SM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$SM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$SM_SCORE=="low_expected"] <- 3
+goo$bin[goo$SM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$SM_SCORE=="high_expected"] <- 5
+goo$bin[goo$SM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$SM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Visual motor", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Verbal memory
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(GT_DF, VMEM_SCORE) %>%
+  summarise(
+    avgMath = mean(GTscore, na.rm = TRUE),
+    seMAth=sd(GTscore, na.rm = TRUE)/sqrt(length(GTscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$VMEM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$VMEM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$VMEM_SCORE=="low_expected"] <- 3
+goo$bin[goo$VMEM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$VMEM_SCORE=="high_expected"] <- 5
+goo$bin[goo$VMEM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$VMEM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Verbal memory", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Flexible thinking
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(GT_DF, ABF_SCORE) %>%
+  summarise(
+    avgMath = mean(GTscore, na.rm = TRUE),
+    seMAth=sd(GTscore, na.rm = TRUE)/sqrt(length(GTscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$ABF_SCORE=="low_weakness"] <- 1
+goo$bin[goo$ABF_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$ABF_SCORE=="low_expected"] <- 3
+goo$bin[goo$ABF_SCORE=="medium_expected"] <- 4
+goo$bin[goo$ABF_SCORE=="high_expected"] <- 5
+goo$bin[goo$ABF_SCORE=="medium_strength"] <- 6
+goo$bin[goo$ABF_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Flexible thinking", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Verbal reasoning 
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(GT_DF, LAN_SCORE) %>%
+  summarise(
+    avgMath = mean(GTscore, na.rm = TRUE),
+    seMAth=sd(GTscore, na.rm = TRUE)/sqrt(length(GTscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$LAN_SCORE=="low_weakness"] <- 1
+goo$bin[goo$LAN_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$LAN_SCORE=="low_expected"] <- 3
+goo$bin[goo$LAN_SCORE=="medium_expected"] <- 4
+goo$bin[goo$LAN_SCORE=="high_expected"] <- 5
+goo$bin[goo$LAN_SCORE=="medium_strength"] <- 6
+goo$bin[goo$LAN_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Verbal reasoning", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Abstract reasoning 
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(GT_DF,NVR_SCORE) %>%
+  summarise(
+    avgMath = mean(GTscore, na.rm = TRUE),
+    seMAth=sd(GTscore, na.rm = TRUE)/sqrt(length(GTscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$NVR_SCORE=="low_weakness"] <- 1
+goo$bin[goo$NVR_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$NVR_SCORE=="low_expected"] <- 3
+goo$bin[goo$NVR_SCORE=="medium_expected"] <- 4
+goo$bin[goo$NVR_SCORE=="high_expected"] <- 5
+goo$bin[goo$NVR_SCORE=="medium_strength"] <- 6
+goo$bin[goo$NVR_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Abstract reasoning", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+  
+```
+\newpage
+
+### Working memory
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(EA_DF, WM_SCORE) %>%
+  summarise(
+    avgMath = mean(EAscore, na.rm = TRUE),
+    seMAth=sd(EAscore, na.rm = TRUE)/sqrt(length(EAscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$WM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$WM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$WM_SCORE=="low_expected"] <- 3
+goo$bin[goo$WM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$WM_SCORE=="high_expected"] <- 5
+goo$bin[goo$WM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$WM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Working memory", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Attention
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(EA_DF, ATT_SCORE) %>%
+  summarise(
+    avgMath = mean(EAscore, na.rm = TRUE),
+    seMAth=sd(EAscore, na.rm = TRUE)/sqrt(length(EAscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$ATT_SCORE=="low_weakness"] <- 1
+goo$bin[goo$ATT_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$ATT_SCORE=="low_expected"] <- 3
+goo$bin[goo$ATT_SCORE=="medium_expected"] <- 4
+goo$bin[goo$ATT_SCORE=="high_expected"] <- 5
+goo$bin[goo$ATT_SCORE=="medium_strength"] <- 6
+goo$bin[goo$ATT_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Attention", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Visual memory
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(EA_DF, VMEM_SCORE) %>%
+  summarise(
+    avgMath = mean(EAscore, na.rm = TRUE),
+    seMAth=sd(EAscore, na.rm = TRUE)/sqrt(length(EAscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$VMEM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$VMEM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$VMEM_SCORE=="low_expected"] <- 3
+goo$bin[goo$VMEM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$VMEM_SCORE=="high_expected"] <- 5
+goo$bin[goo$VMEM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$VMEM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Visual memory", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Spatial perception (p = 0.009, r = 0.92)
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(GT_DF,SPA_SCORE) %>%
+  summarise(
+    avgMath = mean(GTscore, na.rm = TRUE),
+    seMAth=sd(GTscore, na.rm = TRUE)/sqrt(length(GTscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$SPA_SCORE=="low_weakness"] <- 1
+goo$bin[goo$SPA_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$SPA_SCORE=="low_expected"] <- 3
+goo$bin[goo$SPA_SCORE=="medium_expected"] <- 4
+goo$bin[goo$SPA_SCORE=="high_expected"] <- 5
+goo$bin[goo$SPA_SCORE=="medium_strength"] <- 6
+goo$bin[goo$SPA_SCORE=="high_strength"] <- 7
+
+goo <- subset(goo, bin > 0)
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Spatial perception", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson") 
+```
+\newpage
+
+## AG/ Intermediate Algebra/Coordinate Geometry Subsection
+### Visual motor
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(AG_DF,SM_SCORE) %>%
+  summarise(
+    avgMath = mean(AGscore, na.rm = TRUE),
+    seMAth=sd(AGscore, na.rm = TRUE)/sqrt(length(AGscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$SM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$SM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$SM_SCORE=="low_expected"] <- 3
+goo$bin[goo$SM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$SM_SCORE=="high_expected"] <- 5
+goo$bin[goo$SM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$SM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Visual motor", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Verbal memory
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(AG_DF, VMEM_SCORE) %>%
+  summarise(
+    avgMath = mean(AGscore, na.rm = TRUE),
+    seMAth=sd(AGscore, na.rm = TRUE)/sqrt(length(AGscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$VMEM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$VMEM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$VMEM_SCORE=="low_expected"] <- 3
+goo$bin[goo$VMEM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$VMEM_SCORE=="high_expected"] <- 5
+goo$bin[goo$VMEM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$VMEM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Verbal memory", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Flexible thinking
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(AG_DF, ABF_SCORE) %>%
+  summarise(
+    avgMath = mean(AGscore, na.rm = TRUE),
+    seMAth=sd(AGscore, na.rm = TRUE)/sqrt(length(AGscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$ABF_SCORE=="low_weakness"] <- 1
+goo$bin[goo$ABF_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$ABF_SCORE=="low_expected"] <- 3
+goo$bin[goo$ABF_SCORE=="medium_expected"] <- 4
+goo$bin[goo$ABF_SCORE=="high_expected"] <- 5
+goo$bin[goo$ABF_SCORE=="medium_strength"] <- 6
+goo$bin[goo$ABF_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Flexible thinking", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Verbal reasoning 
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(AG_DF, LAN_SCORE) %>%
+  summarise(
+    avgMath = mean(AGscore, na.rm = TRUE),
+    seMAth=sd(AGscore, na.rm = TRUE)/sqrt(length(AGscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$LAN_SCORE=="low_weakness"] <- 1
+goo$bin[goo$LAN_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$LAN_SCORE=="low_expected"] <- 3
+goo$bin[goo$LAN_SCORE=="medium_expected"] <- 4
+goo$bin[goo$LAN_SCORE=="high_expected"] <- 5
+goo$bin[goo$LAN_SCORE=="medium_strength"] <- 6
+goo$bin[goo$LAN_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Verbal reasoning", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Abstract reasoning 
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(AG_DF,NVR_SCORE) %>%
+  summarise(
+    avgMath = mean(AGscore, na.rm = TRUE),
+    seMAth=sd(AGscore, na.rm = TRUE)/sqrt(length(AGscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$NVR_SCORE=="low_weakness"] <- 1
+goo$bin[goo$NVR_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$NVR_SCORE=="low_expected"] <- 3
+goo$bin[goo$NVR_SCORE=="medium_expected"] <- 4
+goo$bin[goo$NVR_SCORE=="high_expected"] <- 5
+goo$bin[goo$NVR_SCORE=="medium_strength"] <- 6
+goo$bin[goo$NVR_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Abstract reasoning", y = "Plane Geometry/Trigonometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+  
+```
+\newpage
+
+### Working memory
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(AG_DF,WM_SCORE) %>%
+  summarise(
+    avgMath = mean(AGscore, na.rm = TRUE),
+    seMAth=sd(AGscore, na.rm = TRUE)/sqrt(length(AGscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$WM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$WM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$WM_SCORE=="low_expected"] <- 3
+goo$bin[goo$WM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$WM_SCORE=="high_expected"] <- 5
+goo$bin[goo$WM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$WM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Working memory", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Attention
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(AG_DF, ATT_SCORE) %>%
+  summarise(
+    avgMath = mean(AGscore, na.rm = TRUE),
+    seMAth=sd(AGscore, na.rm = TRUE)/sqrt(length(AGscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$ATT_SCORE=="low_weakness"] <- 1
+goo$bin[goo$ATT_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$ATT_SCORE=="low_expected"] <- 3
+goo$bin[goo$ATT_SCORE=="medium_expected"] <- 4
+goo$bin[goo$ATT_SCORE=="high_expected"] <- 5
+goo$bin[goo$ATT_SCORE=="medium_strength"] <- 6
+goo$bin[goo$ATT_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Attention", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Visual memory
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(AG_DF, VMEM_SCORE) %>%
+  summarise(
+    avgMath = mean(AGscore, na.rm = TRUE),
+    seMAth=sd(AGscore, na.rm = TRUE)/sqrt(length(AGscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$VMEM_SCORE=="low_weakness"] <- 1
+goo$bin[goo$VMEM_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$VMEM_SCORE=="low_expected"] <- 3
+goo$bin[goo$VMEM_SCORE=="medium_expected"] <- 4
+goo$bin[goo$VMEM_SCORE=="high_expected"] <- 5
+goo$bin[goo$VMEM_SCORE=="medium_strength"] <- 6
+goo$bin[goo$VMEM_SCORE=="high_strength"] <- 7
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Visual memory", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson")
+```
+\newpage
+
+### Spatial perception (p = 0.01, r = 0.92)
+```{r, echo=FALSE, warning=FALSE}
+goo <- group_by(AG_DF,SPA_SCORE) %>%
+  summarise(
+    avgMath = mean(AGscore, na.rm = TRUE),
+    seMAth=sd(AGscore, na.rm = TRUE)/sqrt(length(AGscore)),
+    num = length(unique(student_id))
+  )
+
+goo$bin <- 0
+goo$bin[goo$SPA_SCORE=="low_weakness"] <- 1
+goo$bin[goo$SPA_SCORE=="medium_weakness"] <- 2
+goo$bin[goo$SPA_SCORE=="low_expected"] <- 3
+goo$bin[goo$SPA_SCORE=="medium_expected"] <- 4
+goo$bin[goo$SPA_SCORE=="high_expected"] <- 5
+goo$bin[goo$SPA_SCORE=="medium_strength"] <- 6
+goo$bin[goo$SPA_SCORE=="high_strength"] <- 7
+
+goo <- subset(goo, bin > 0)
+
+limits <- aes(ymax = avgMath + seMAth, ymin=avgMath - seMAth)
+
+ggplot(goo,aes(x=factor(bin),y=avgMath))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Spatial perception", y = "Intermediate Algebra/Coordinate Geometry (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"), axis.text.x = element_text(angle=60, hjust=1))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+
+cor.test(goo$bin, goo$avgMath, method="pearson") 
+```
+\newpage
+
+```{r, echo=FALSE, warning=FALSE, include=FALSE}
+#prepare data for level of difficulty analyses
+
+foo <- `70C`[c(1,2,3,4,20),]
+subsection <- t(foo)
+subsection <- data.frame(subsection)
+subsection <- subsection[-1, ] 
+
+colnames(subsection)[1] <- "test"
+colnames(subsection)[2] <- "question"
+colnames(subsection)[3] <- "section"
+colnames(subsection)[4] <- "subsection"
+colnames(subsection)[5] <- "difficulty"
+
+questions2 <- t(questions)
+subsection <- cbind(subsection, questions2)
+
+write.csv(subsection, "mindprintdifficuty.csv", row.names=TRUE) #save to computer
+
+## Load mindprint difficulty data
+q.difficulty <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/mindprintdifficuty.csv", header=T)
+
+finalDF3 <- cbind(finalDF2, q.difficulty)
+```
+
+## Appleseed Suggested Analyses
+### EA - abstract reasoning model
+```{r, echo=FALSE, warning=FALSE}
+EA_AbsRea <- EA_DF
+EA_AbsRea$bin <- 0
+EA_AbsRea$bin[EA_AbsRea$NVR_SCORE=="low_weakness"] <- 1
+EA_AbsRea$bin[EA_AbsRea$NVR_SCORE=="medium_weakness"] <- 2
+EA_AbsRea$bin[EA_AbsRea$NVR_SCORE=="low_expected"] <- 3
+EA_AbsRea$bin[EA_AbsRea$NVR_SCORE=="medium_expected"] <- 4
+EA_AbsRea$bin[EA_AbsRea$NVR_SCORE=="high_expected"] <- 5
+EA_AbsRea$bin[EA_AbsRea$NVR_SCORE=="medium_strength"] <- 6
+EA_AbsRea$bin[EA_AbsRea$NVR_SCORE=="high_strength"] <- 7
+
+EA_model <- lm(EAscore ~ bin, data=EA_AbsRea)  # accuracy
+summary(EA_model)
+
+goo <- group_by(EA_AbsRea,NVR_SCORE,bin) %>%
+  summarise(
+    avgEA = mean(EAscore, na.rm = TRUE),
+    seEA=sd(EAscore, na.rm = TRUE)/sqrt(length(EAscore)),
+    num = length(unique(student_id))
+  )
+
+ggplot(goo,aes(x=factor(bin),y=avgEA))+
+  geom_point(aes(size = num))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  labs(x = "Abstract reasoning", y = "Pre-Algebra/Elementary Algebra (% correct)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text=element_text(family="Times"))+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,.1))+
+  scale_x_discrete(breaks=c("1","2","3","4","5","6","7"),labels=c("low weakness", "medium weakness","low expected","medium expected","high expected","medium strength","high strength"))
+  
+cor.test(goo$bin, goo$avgEA, method="pearson")  
+```
+Elementary algebra is not predicted by abstract reasoning accuracy (p=0.645).
+
+### EA - abstract reasoning broken down by difficulty of questions
+
+Level 1 EA
+```{r, echo=FALSE, warning=FALSE}
+finalDF3$bin_absrea <- 0
+finalDF3$bin_absrea[finalDF3$NVR_SCORE=="low_weakness"] <- 1
+finalDF3$bin_absrea[finalDF3$NVR_SCORE=="medium_weakness"] <- 2
+finalDF3$bin_absrea[finalDF3$NVR_SCORE=="low_expected"] <- 3
+finalDF3$bin_absrea[finalDF3$NVR_SCORE=="medium_expected"] <- 4
+finalDF3$bin_absrea[finalDF3$NVR_SCORE=="high_expected"] <- 5
+finalDF3$bin_absrea[finalDF3$NVR_SCORE=="medium_strength"] <- 6
+finalDF3$bin_absrea[finalDF3$NVR_SCORE=="high_strength"] <- 7
+
+#level 1 
+EA1 <- lm(EA1 ~ bin_absrea, data=finalDF3)  # accuracy
+summary(EA1)
+```
+
+Level 2 EA
+```{r, echo=FALSE, warning=FALSE}
+#level 2
+EA2 <- lm(EA2 ~ bin_absrea, data=finalDF3)  # accuracy
+summary(EA2)
+```
+
+Level 3 EA
+```{r, echo=FALSE, warning=FALSE}
+#level 3
+EA3 <- lm(EA3 ~ bin_absrea, data=finalDF3)  # accuracy
+summary(EA3)
+```
+
+Level 4 EA
+```{r, echo=FALSE, warning=FALSE}
+#level 4
+EA4 <- lm(EA4 ~ bin_absrea, data=finalDF3)  # accuracy
+summary(EA4)
+```
+
+Level 5 EA
+```{r, echo=FALSE, warning=FALSE}
+#level 5
+EA5 <- lm(EA5 ~ bin_absrea, data=finalDF3)  # accuracy
+summary(EA5)
+```
+Elementary algebra is not predicted by abstract reasoning accuracy.
+
+\newpage
+
+### GT - abstract reasoning & spatial perception
+```{r, echo=FALSE, warning=FALSE}
+GT_DF2 <- GT_DF
+GT_DF2$bin_absrea <- 0
+GT_DF2$bin_absrea[GT_DF2$NVR_SCORE=="low_weakness"] <- 1
+GT_DF2$bin_absrea[GT_DF2$NVR_SCORE=="medium_weakness"] <- 2
+GT_DF2$bin_absrea[GT_DF2$NVR_SCORE=="low_expected"] <- 3
+GT_DF2$bin_absrea[GT_DF2$NVR_SCORE=="medium_expected"] <- 4
+GT_DF2$bin_absrea[GT_DF2$NVR_SCORE=="high_expected"] <- 5
+GT_DF2$bin_absrea[GT_DF2$NVR_SCORE=="medium_strength"] <- 6
+GT_DF2$bin_absrea[GT_DF2$NVR_SCORE=="high_strength"] <- 7
+
+GT_DF2$bin_spaper <- 0
+GT_DF2$bin_spaper[GT_DF2$SPA_SCORE=="low_weakness"] <- 1
+GT_DF2$bin_spaper[GT_DF2$SPA_SCORE=="medium_weakness"] <- 2
+GT_DF2$bin_spaper[GT_DF2$SPA_SCORE=="low_expected"] <- 3
+GT_DF2$bin_spaper[GT_DF2$SPA_SCORE=="medium_expected"] <- 4
+GT_DF2$bin_spaper[GT_DF2$SPA_SCORE=="high_expected"] <- 5
+GT_DF2$bin_spaper[GT_DF2$SPA_SCORE=="medium_strength"] <- 6
+GT_DF2$bin_spaper[GT_DF2$SPA_SCORE=="high_strength"] <- 7
+
+GT_model <- lm(GTscore ~ bin_absrea + bin_spaper, data=GT_DF2)  
+
+summary(GT_model)
+```
+Plane geometry/trigonometry is predicted by spatial perception accuracy (p=0.042).
+
+\newpage
+
+### GT - abstract reasoning & spatial perception broken down by difficulty of questions
+
+Level 1 GT
+```{r, echo=FALSE, warning=FALSE}
+finalDF3$bin_spaper <- 0
+finalDF3$bin_spaper[finalDF3$SPA_SCORE=="low_weakness"] <- 1
+finalDF3$bin_spaper[finalDF3$SPA_SCORE=="medium_weakness"] <- 2
+finalDF3$bin_spaper[finalDF3$SPA_SCORE=="low_expected"] <- 3
+finalDF3$bin_spaper[finalDF3$SPA_SCORE=="medium_expected"] <- 4
+finalDF3$bin_spaper[finalDF3$SPA_SCORE=="high_expected"] <- 5
+finalDF3$bin_spaper[finalDF3$SPA_SCORE=="medium_strength"] <- 6
+finalDF3$bin_spaper[finalDF3$SPA_SCORE=="high_strength"] <- 7
+
+#level 1 
+GT1 <- lm(GT1 ~ bin_absrea + bin_spaper, data=finalDF3)  # accuracy
+summary(GT1)
+```
+
+Level 2 GT
+```{r, echo=FALSE, warning=FALSE}
+#level 2
+GT2 <- lm(GT2 ~ bin_absrea + bin_spaper, data=finalDF3)  # accuracy
+summary(GT2)
+```
+
+Level 3 GT
+```{r, echo=FALSE, warning=FALSE}
+#level 3
+GT3 <- lm(GT3 ~ bin_absrea + bin_spaper, data=finalDF3)  # accuracy
+summary(GT3)
+```
+
+Level 4 GT
+```{r, echo=FALSE, warning=FALSE}
+#level 4
+GT4 <- lm(GT4 ~ bin_absrea + bin_spaper, data=finalDF3)  # accuracy
+summary(GT4)
+```
+
+Level 5 GT
+```{r, echo=FALSE, warning=FALSE}
+#level 5
+GT5 <- lm(GT5 ~ bin_absrea + bin_spaper, data=finalDF3)  # accuracy
+summary(GT5)
+```
+Difficult questions level 3-5 of plane geometry/trigonometry is predicted by spatial perception accuracy.
+
+\newpage
+
+### AG - abstract reasoning & spatial perception
+```{r, echo=FALSE, warning=FALSE}
+AG_DF2 <- AG_DF
+AG_DF2$bin_absrea <- 0
+AG_DF2$bin_absrea[AG_DF2$NVR_SCORE=="low_weakness"] <- 1
+AG_DF2$bin_absrea[AG_DF2$NVR_SCORE=="medium_weakness"] <- 2
+AG_DF2$bin_absrea[AG_DF2$NVR_SCORE=="low_expected"] <- 3
+AG_DF2$bin_absrea[AG_DF2$NVR_SCORE=="medium_expected"] <- 4
+AG_DF2$bin_absrea[AG_DF2$NVR_SCORE=="high_expected"] <- 5
+AG_DF2$bin_absrea[AG_DF2$NVR_SCORE=="medium_strength"] <- 6
+AG_DF2$bin_absrea[AG_DF2$NVR_SCORE=="high_strength"] <- 7
+
+AG_DF2$bin_spaper <- 0
+AG_DF2$bin_spaper[AG_DF2$SPA_SCORE=="low_weakness"] <- 1
+AG_DF2$bin_spaper[AG_DF2$SPA_SCORE=="medium_weakness"] <- 2
+AG_DF2$bin_spaper[AG_DF2$SPA_SCORE=="low_expected"] <- 3
+AG_DF2$bin_spaper[AG_DF2$SPA_SCORE=="medium_expected"] <- 4
+AG_DF2$bin_spaper[AG_DF2$SPA_SCORE=="high_expected"] <- 5
+AG_DF2$bin_spaper[AG_DF2$SPA_SCORE=="medium_strength"] <- 6
+AG_DF2$bin_spaper[AG_DF2$SPA_SCORE=="high_strength"] <- 7
+
+AG_model <- lm(AGscore ~ bin_absrea + bin_spaper, data=AG_DF2)  
+
+summary(AG_model)
+
+```
+Algebra/coordinate geometry is not predicted by abstract reasoning or spatial perception.
+
+\newpage
+### AG - abstract reasoning & spatial perception broken down by difficulty of questions
+
+Level 1 AG
+```{r, echo=FALSE, warning=FALSE}
+#level 1 
+AG1 <- lm(AG1 ~ bin_absrea + bin_spaper, data=finalDF3)  # accuracy
+summary(AG1)
+```
+
+Level 2 AG
+```{r, echo=FALSE, warning=FALSE}
+#level 2
+AG2 <- lm(AG2 ~ bin_absrea + bin_spaper, data=finalDF3)  # accuracy
+summary(AG2)
+```
+
+Level 3 AG
+```{r, echo=FALSE, warning=FALSE}
+#level 3
+AG3 <- lm(AG3 ~ bin_absrea + bin_spaper, data=finalDF3)  # accuracy
+summary(AG3)
+```
+
+Level 4 AG
+```{r, echo=FALSE, warning=FALSE}
+#level 4
+AG4 <- lm(AG4 ~ bin_absrea + bin_spaper, data=finalDF3)  # accuracy
+summary(AG4)
+```
+
+Level 5 AG
+```{r, echo=FALSE, warning=FALSE}
+#level 5
+AG5 <- lm(AG5 ~ bin_absrea + bin_spaper, data=finalDF3)  # accuracy
+summary(AG5)
+```
+Overall algebra/coordinate geometry is not predicted by abstract reasoning or spatial perception. 
+But level 1 algebra/coordinate geometry is predicted by spatial perception.
+
+\newpage
+
+### AG - abstract reasoning & spatial perception & flexible thinking
+```{r, echo=FALSE, warning=FALSE}
+AG_DF2$bin_flexthin <- 0
+AG_DF2$bin_flexthin[AG_DF2$ABF_SCORE=="low_weakness"] <- 1
+AG_DF2$bin_flexthin[AG_DF2$ABF_SCORE=="medium_weakness"] <- 2
+AG_DF2$bin_flexthin[AG_DF2$ABF_SCORE=="low_expected"] <- 3
+AG_DF2$bin_flexthin[AG_DF2$ABF_SCORE=="medium_expected"] <- 4
+AG_DF2$bin_flexthin[AG_DF2$ABF_SCORE=="high_expected"] <- 5
+AG_DF2$bin_flexthin[AG_DF2$ABF_SCORE=="medium_strength"] <- 6
+AG_DF2$bin_flexthin[AG_DF2$ABF_SCORE=="high_strength"] <- 7
+
+AG_model2 <- lm(AGscore ~ bin_absrea + bin_spaper + bin_flexthin, data=AG_DF2)  
+
+summary(AG_model2)
+```
+Algebra/coordinate geometry is not predicted by abstract reasoning, spatial perception or flexible thinking. 
+
+\newpage
+
+### AG - abstract reasoning & spatial perception & flexible thinking broken down by difficulty of questions
+
+Level 1 AG
+```{r, echo=FALSE, warning=FALSE}
+finalDF3$bin_flexthin <- 0
+finalDF3$bin_flexthin[finalDF3$ABF_SCORE=="low_weakness"] <- 1
+finalDF3$bin_flexthin[finalDF3$ABF_SCORE=="medium_weakness"] <- 2
+finalDF3$bin_flexthin[finalDF3$ABF_SCORE=="low_expected"] <- 3
+finalDF3$bin_flexthin[finalDF3$ABF_SCORE=="medium_expected"] <- 4
+finalDF3$bin_flexthin[finalDF3$ABF_SCORE=="high_expected"] <- 5
+finalDF3$bin_flexthin[finalDF3$ABF_SCORE=="medium_strength"] <- 6
+finalDF3$bin_flexthin[finalDF3$ABF_SCORE=="high_strength"] <- 7
+
+#level 1 
+AG1 <- lm(AG1 ~ bin_absrea + bin_spaper + bin_flexthin, data=finalDF3)  # accuracy
+summary(AG1)
+```
+
+Level 2 AG
+```{r, echo=FALSE, warning=FALSE}
+#level 2
+AG2 <- lm(AG2 ~ bin_absrea + bin_spaper + bin_flexthin, data=finalDF3)  # accuracy
+summary(AG2)
+```
+
+Level 3 AG
+```{r, echo=FALSE, warning=FALSE}
+#level 3
+AG3 <- lm(AG3 ~ bin_absrea + bin_spaper + bin_flexthin, data=finalDF3)  # accuracy
+summary(AG3)
+```
+
+Level 4 AG
+```{r, echo=FALSE, warning=FALSE}
+#level 4
+AG4 <- lm(AG4 ~ bin_absrea + bin_spaper + bin_flexthin, data=finalDF3)  # accuracy
+summary(AG4)
+```
+
+Level 5 AG
+```{r, echo=FALSE, warning=FALSE}
+#level 5
+AG5 <- lm(AG5 ~ bin_absrea + bin_spaper + bin_flexthin, data=finalDF3)  # accuracy
+summary(AG5)
+```
+Algebra/coordinate geometry is not predicted by abstract reasoning, spatial perception or flexible thinking. But level 1 algebra/coordinate geometry is predicted by spatial perception.
+
+\newpage
+
+## Summary
+
+1. Overall math score is predicted by spatial perception.
+
+2. Elementary algebra score is predicted by spatial perception. It is not predicted by abstract reasoning even when broken down by question difficulty.
+
+3. Plane geometry/trigonometry score is predicted by spatial perception. Specifically, level 3-5 difficulty, of plane geometry/trigonometry is predicted by spatial perception.
+
+4. Intermediate algebra/coordinate geometry is predicted by spatial perception (univariate analysis).   
+Intermediate algebra/coordinate geometry is not predicted by abstract reasoning, spatial perception or flexible thinking (multivariate analysis).  
+But level 1 algebra/coordinate geometry is predicted by spatial perception.
+

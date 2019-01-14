@@ -66,7 +66,7 @@ list2env(lst, envir = .GlobalEnv)
 ```{r setup, include=FALSE, warning=FALSE}
 ## LOAD MINDPRINT DATA
 
-MindprintDF <- read_xlsx("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/MindprintData_112418.xlsx")
+MindprintDF <- read_xlsx("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/MindprintData_010719.xlsx")
 
 ## LOAD CONVERT RAW DATA TO SCALED DATA TABLES
 
@@ -1038,11 +1038,33 @@ for (i in 1:length(foo$customer_id)){
 
 ACTscaledscores <- rbind(ACTscaledscores, foo)
 
+ACTscaledscores <- ACTscaledscores[-264, ]
+```
+
+Add in ACT Data from 01 07 19
+```{r}
+library(readxl)
+
+ACTData_010719 <- read_excel("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/ACTData_010719.xlsx")
+names(ACTData_010719)[1] <- "customer_id"
+
+ACTscaledscores[nrow(ACTscaledscores)+length(ACTData_010719$customer_id),] <- NA
+
+ACTscaledscores$customer_id[264:279] <- ACTData_010719$customer_id
+ACTscaledscores$ACTversion[264:279] <- ACTData_010719$Test
+ACTscaledscores$EngScaledScore[264:279] <- ACTData_010719$English
+ACTscaledscores$MathScaledScore[264:279] <- ACTData_010719$Math
+ACTscaledscores$ReadingScaledScore[264:279] <- ACTData_010719$Reading
+ACTscaledscores$ScienceScaledScore[264:279] <- ACTData_010719$Science
+```
+
+
+```{r}
 ## Merge with Mindprint DF
 MindprintDF_yescombo <- merge(MindprintDF, ACTscaledscores, by = "customer_id")
 
 # save to computer
-write.csv(MindprintDF_yescombo, "Mindprint_ScaledScores_YesCombo.csv", row.names=TRUE) #save to computer
+write.csv(MindprintDF_yescombo, "Mindprint_ScaledScores.csv", row.names=TRUE) #save to computer
 ```
 
 Identify missing data
@@ -1069,33 +1091,5 @@ for (i in 1:length(MindprintDF$customer_id)) {
   }
 }
 
-```
-
-## LOAD SAT DATA
-```{r setup, include=FALSE, warning=FALSE}
-# Load multiple excel sheets at once
-
-# get names of sheets
-sheets <- readxl::excel_sheets("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/SAT_Scores_112718.xlsx")
-
-# load in excel data as 1 big file
-lst <- lapply(sheets, function(sheet) 
-  readxl::read_excel("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/SAT_Scores_112718.xlsx", sheet = sheet)
-)
-
-# prepare names
-names(lst) <- sheets
-
-# turn each sheet into DF
-list2env(lst, envir = .GlobalEnv)
-
-# combine all SAT scores
-SATscaledscores <- rbind(Manjri, Maureen, APlus, Paidosh, SmartyPrep)
-
-## Merge with Mindprint DF
-MindprintDF <- merge(Mindprint, SATscaledscores, by = "customer_id")
-
-# save to computer
-write.csv(MindprintDF, "Mindprint_SATScores.csv", row.names=TRUE) #save to computer
 ```
 

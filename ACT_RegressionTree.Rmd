@@ -25,13 +25,12 @@ library(lmerTest)
 library(rpart)
 library(rpart.plot)
 library(partykit)
+library(shiny)
+library(knitr)
 
 #Import data
-mp <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Mindprint_ScaledScores_YesCombo_112418.csv")
-```
+mp <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Mindprint_ScaledScores_010819.csv")
 
-
-```{r cars}
 # Label students who received extra time: 2507 (don't have data), 2421, 4499, 6150, 517, 2010, 2948, 6171, 5866, 4967, 2720, 1872, 6808
 mp$ExtraTime <- 0
 
@@ -52,9 +51,7 @@ mp$ExtraTime[mp$customer_id==10266] <- 1
 mp$ExtraTime[mp$customer_id==8409] <- 1
 
 length(which(mp$ExtraTime==1))
-```
 
-```{r}
 # Replace outlier Mindprint scores (accuracy scores with < -2 with -2)
 # 1901: WM_Az, 5143: ATT_Az, 1902: ATT_Az, 6381: ATT_Az
 
@@ -62,35 +59,49 @@ mp$WM_Az[mp$customer_id==1901] <- -2
 mp$ATT_Az[mp$customer_id==5143] <- -2
 mp$ATT_Az[mp$customer_id==1902] <- -2
 mp$ATT_Az[mp$customer_id==6381] <- -2
-```
 
 # Remove students that having missing ACT subject scores
-```{r}
+
 mp <- mp[!is.na(mp$EngScaledScore),]
 mp <- mp[!is.na(mp$MathScaledScore),]
 mp <- mp[!is.na(mp$ScienceScaledScore),]
 mp <- mp[!is.na(mp$ReadingScaledScore),]
-```
 
-# Prepare DF
-```{r}
+###### Prepare DF ###### 
 # drop processing speed
 mp$PROCESSING_SPEED_Sz <- NULL
 
 # drop students who received extra time
 mp <- subset(mp, ExtraTime==0)
-```
+
+###### Prepare predictor DF ###### 
+
+# drop processing speed
+mindprint <- mp[,c(1:35)]
+mindprint$customer_id <- NULL
+mindprint$age <- NULL
+mindprint$SM_SCORE <- NULL
+mindprint$VMEM_SCORE <- NULL
+mindprint$ABF_SCORE <- NULL
+mindprint$LAN_SCORE <- NULL
+mindprint$NVR_SCORE <- NULL
+mindprint$WM_SCORE <- NULL
+mindprint$ATT_SCORE <- NULL
+mindprint$SMEM_SCORE <- NULL
+
+head(mindprint)
+
+write.csv(mp, "ACT_MP.csv", row.names=TRUE) #save to computer
+``` 
 
 Reading
 ```{r}
 y <- mp$ReadingScaledScore
 
-mindprint <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Mindprintscores.csv")
-mindprint$customer_id <- NULL
 finalDF <- cbind(mindprint, y)
 
 # 1. grow tree 
-tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=1, data=finalDF)
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=finalDF)
 
 #printcp(tree) # display the results 
 #plotcp(tree) # visualize cross-validation results 
@@ -112,30 +123,35 @@ names(stats)[2] <- "sd"
 stats2 <- aggregate(finalDF$y, list(tree$where), mean)
 names(stats2)[2] <- "mean"
 stats$mean <- stats2$mean
-stats$n <- 22
-stats$n[stats$node==5] <- 78
-stats$n[stats$node==7] <- 55
-stats$n[stats$node==8] <- 70
-stats$n[stats$node==10] <- 20
-stats$n[stats$node==11] <- 20
+stats$onesd_lower <- stats$mean - stats$sd
+stats$onesd_upper <- stats$mean + stats$sd
+stats$twosd_lower <- stats$mean - (2*stats$sd)
+stats$twosd_upper <- stats$mean + (2*stats$sd)
+  
+kable(stats, format = "markdown", align = 'c', row.names=F)
 
-# 95% CI
-stats$CIlow <- 0 
-stats$CIhigh <- 0
+# IDENTIFY OUTLIERS
+#node5
+foo2 <- subset(mp, LAN_efficiency < 0.844 & NVR_efficiency < 0.157 & WM_Sz >= -0.279)
+foo2$customer_id[which(foo2$ReadingScaledScore > mean(foo2$ReadingScaledScore) + (2*sd(foo2$ReadingScaledScore)))] 
 
-stats$CIlow <- stats$mean - (qnorm(0.975)*stats$sd/sqrt(stats$n))
-stats$CIhigh <- stats$mean + (qnorm(0.975)*stats$sd/sqrt(stats$n))
+#node7
+foo3 <- subset(mp, LAN_efficiency < 0.844 & NVR_efficiency >= 0.157 & LAN_Sz < 0.265)
+foo3$customer_id[which(foo3$ReadingScaledScore > mean(foo3$ReadingScaledScore) + (2*sd(foo3$ReadingScaledScore)))] 
+
+#node3
+foo <- subset(mp, LAN_efficiency >= 0.844)
+foo$customer_id[which(foo$ReadingScaledScore < mean(foo$ReadingScaledScore) - (2*sd(foo$ReadingScaledScore)))]
 ```
 
 English
 ```{r}
 y <- mp$EngScaledScore
-mindprint <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Mindprintscores.csv")
-mindprint$customer_id <- NULL
+
 finalDF <- cbind(mindprint, y)
 
 # 1. grow tree 
-tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=2, data=finalDF)
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=finalDF)
 # 
 # printcp(tree) # display the results 
 # plotcp(tree) # visualize cross-validation results 
@@ -147,7 +163,7 @@ tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=2, data=f
 # tree.pruned <- prune(tree, cp = bestcp)
 
 # Plot (w/box plots)
-plot(as.party(tree), main="Regression Tree for ACT English") # color of the boxes)
+plot(as.party(tree), main="Regression Tree for ACT English") 
 
 # calculate SD and CI
 stats <- aggregate(finalDF$y, list(tree$where), sd)
@@ -156,27 +172,27 @@ names(stats)[2] <- "sd"
 stats2 <- aggregate(finalDF$y, list(tree$where), mean)
 names(stats2)[2] <- "mean"
 stats$mean <- stats2$mean
-stats$n <- 24
-stats$n[stats$node==4] <- 212
-stats$n[stats$node==5] <- 29
+stats$onesd_lower <- stats$mean - stats$sd
+stats$onesd_upper <- stats$mean + stats$sd
+stats$twosd_lower <- stats$mean - (2*stats$sd)
+stats$twosd_upper <- stats$mean + (2*stats$sd)
 
-# 95% CI
-stats$CIlow <- 0 
-stats$CIhigh <- 0
+kable(stats, format = "markdown", align = 'c', row.names=F)
 
-stats$CIlow <- stats$mean - (qnorm(0.975)*stats$sd/sqrt(stats$n))
-stats$CIhigh <- stats$mean + (qnorm(0.975)*stats$sd/sqrt(stats$n))
+# IDENTIFY OUTLIERS
+#node7
+foo3 <- subset(mp, LAN_efficiency >= 0.94)
+foo3$customer_id[which(foo3$EngScaledScore < mean(foo3$EngScaledScore) - (2*sd(foo3$EngScaledScore)))] #none
 ```
 
 Math
 ```{r}
 y <- mp$MathScaledScore
-mindprint <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Mindprintscores.csv")
-mindprint$customer_id <- NULL
+
 finalDF <- cbind(mindprint, y)
 
 # 1. grow tree 
-tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=finalDF)
+tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=2, data=finalDF)
 
 # printcp(tree) # display the results 
 # plotcp(tree) # visualize cross-validation results 
@@ -197,33 +213,35 @@ names(stats)[2] <- "sd"
 stats2 <- aggregate(finalDF$y, list(tree$where), mean)
 names(stats2)[2] <- "mean"
 stats$mean <- stats2$mean
-stats$n <- 41
-stats$n[stats$node==5] <- 24
-stats$n[stats$node==7] <- 30
-stats$n[stats$node==8] <- 72
-stats$n[stats$node==10] <-41
-stats$n[stats$node==12] <- 22
-stats$n[stats$node==13] <- 35
+stats$onesd_lower <- stats$mean - stats$sd
+stats$onesd_upper <- stats$mean + stats$sd
+stats$twosd_lower <- stats$mean - (2*stats$sd)
+stats$twosd_upper <- stats$mean + (2*stats$sd)
 
-# 95% CI
-stats$CIlow <- 0 
-stats$CIhigh <- 0
+kable(stats, format = "markdown", align = 'c', row.names=F)
 
-stats$CIlow <- stats$mean - (qnorm(0.975)*stats$sd/sqrt(stats$n))
-stats$CIhigh <- stats$mean + (qnorm(0.975)*stats$sd/sqrt(stats$n))
+# IDENTIFY OUTLIERS
+#node4
+foo3 <- subset(mp, NVR_efficiency < 0.302 & LAN_Az < 0.418 & VMEM_Az < 0.459)
+foo3$customer_id[which(foo3$MathScaledScore > mean(foo3$MathScaledScore) + (2*sd(foo3$MathScaledScore)))] 
+
+#node12
+foo2 <- subset(mp, NVR_efficiency >= 0.302 & LAN_Sz >= 0.27 & SPA_Sz >= -0.119)
+foo2$customer_id[which(foo2$MathScaledScore < mean(foo2$MathScaledScore) - (2*sd(foo2$MathScaledScore)))] 
 ```
 
 Science
 ```{r}
 y <- mp$ScienceScaledScore
-mindprint <- read.csv("~/Documents/Felicia Zhang/Felicia/Princeton/ConsultingClub/Mindprint/Mindprintscores.csv")
-mindprint$customer_id <- NULL
+
+# remove SM_Sz for science
 mindprint$SM_Sz <- NULL
+
 finalDF <- cbind(mindprint, y)
 
 # 1. grow tree 
 tree <- rpart(y~., method="anova", minsplit=20, minbucket=20, maxdepth=3, data=finalDF)
-# 
+
 # printcp(tree) # display the results 
 # plotcp(tree) # visualize cross-validation results 
 # 
@@ -244,16 +262,23 @@ names(stats)[2] <- "sd"
 stats2 <- aggregate(finalDF$y, list(tree$where), mean)
 names(stats2)[2] <- "mean"
 stats$mean <- stats2$mean
-stats$n <- 22
-stats$n[stats$node==5] <- 34
-stats$n[stats$node==7] <- 35
-stats$n[stats$node==8] <- 143
-stats$n[stats$node==9] <-31
+stats$onesd_lower <- stats$mean - stats$sd
+stats$onesd_upper <- stats$mean + stats$sd
+stats$twosd_lower <- stats$mean - (2*stats$sd)
+stats$twosd_upper <- stats$mean + (2*stats$sd)
 
-# 95% CI
-stats$CIlow <- 0 
-stats$CIhigh <- 0
+kable(stats, format = "markdown", align = 'c', row.names=F)
 
-stats$CIlow <- stats$mean - (qnorm(0.975)*stats$sd/sqrt(stats$n))
-stats$CIhigh <- stats$mean + (qnorm(0.975)*stats$sd/sqrt(stats$n))
+# IDENTIFY OUTLIERS
+#node3
+foo3 <- subset(mp, LAN_efficiency < 0.93 & LAN_efficiency < -0.305)
+foo3$customer_id[which(foo3$ScienceScaledScore < mean(foo3$ScienceScaledScore) - (2*sd(foo3$ScienceScaledScore)))] #none
+
+#node5
+foo3 <- subset(mp, LAN_efficiency < 0.93 & LAN_efficiency >= -0.305 & NVR_Az < 1.264)
+foo3$customer_id[which(foo3$ScienceScaledScore > mean(foo3$ScienceScaledScore) + (2*sd(foo3$ScienceScaledScore)))] 
+
+#node5
+foo3 <- subset(mp, LAN_efficiency < 0.93 & LAN_efficiency >= -0.305 & NVR_Az < 1.264)
+foo3$customer_id[which(foo3$ScienceScaledScore < mean(foo3$ScienceScaledScore) - (2*sd(foo3$ScienceScaledScore)))] 
 ```

@@ -1,0 +1,196 @@
+---
+title: "Untitled"
+author: "Felicia Zhang"
+date: '2018-12-30'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+setwd <- "/Users/Felicia/Documents/Shiny/"
+
+library(shiny)
+library(ggplot2) 
+library(zoo)
+library(reshape)
+library(plyr)
+library(dplyr)
+library(scales) 
+library(data.table)
+library(signal)
+library(matrixStats)
+library(lme4)
+library(arm)
+library(broom)
+library(tidyr)
+library(car)
+
+
+################# scatterplots ################# 
+
+######## user interface ########
+ui <- fluidPage(
+  style="padding-top: 20px;",
+  h2("Bubble charts"),
+  
+  absolutePanel(
+    bottom = 10, right = 10, width = 300,
+    draggable = TRUE,
+    wellPanel(
+      fileInput('file', 'Choose CSV File',
+                accept = c("text/csv",
+                           "text/comma-separated-values,text/plain",
+                           ".csv")),
+      checkboxInput('header', 'Header', TRUE),
+      radioButtons('sep', 'Separator',
+                   c(Comma=',',
+                     Semicolon=';',
+                     Tab='\t'),
+                   ','),
+      actionButton("choice", "Update"),
+      
+      # Horizontal line ----
+      tags$hr(),
+      
+      selectInput("xcol", "X Variable", choices = NULL), 
+      selectInput("ycol", "Y Variable", choices = NULL),
+      selectInput("p", "Size Variable", choices = NULL),
+      radioButtons("label", "Label data points:",
+                   list("Yes"='a', "No"='b'))      
+    ),
+    style = "opacity: 0.80"
+  ),
+  plotOutput('plot1', height=400, width=600, brush = brushOpts(id = "plot1_brush",resetOnNew = TRUE)),
+  plotOutput('plot2', height=300, width=500)
+)  
+
+
+server <- 
+  function(input, output, session) {
+  ranges2 <- reactiveValues(x = NULL, y = NULL)
+  
+  info <- eventReactive(input$choice, {
+    # specify file
+    inFile <- input$file
+    req(inFile)
+    
+    # Changes in read.table 
+    f <- read.table(inFile$datapath, header = input$header, sep = input$sep)
+    vars <- names(f)
+    
+    # Update select input immediately after clicking on the action button. 
+    updateSelectInput(session, "xcol", "X Variable", choices = vars)
+    updateSelectInput(session, "ycol", "Y Variable", choices = vars)
+    updateSelectInput(session, "p", "Size Variable", choices = vars)
+    f #must print f so that the output is saved into "info"
+  })
+  
+  output$plot1 <- renderPlot({
+    f <- info()
+    
+    # selected mindprint features
+    selectedData <-  f[, c(input$xcol, input$ycol)]
+    colnames(selectedData)[1] <- "xcol"
+    colnames(selectedData)[2] <- "ycol"
+    test <- input$p
+    outcome <- f[,test]
+    
+    # combine everything into one df
+    selectedData <- cbind(selectedData, outcome, f$customer_id)    
+    
+    # set jitter position
+    p <- position_jitter(width=1,height=1,seed=2)
+    
+    # no label
+    if(input$label=='b'){       
+      
+      # plot
+      ggplot(selectedData, aes(x=xcol, y=ycol, size=outcome, label = f$customer_id))+
+        theme_bw()+
+        theme(panel.grid.major = element_blank(), axis.line = element_line(colour = "black"))+
+        geom_point(alpha=0.2, color="#00AFBB", position=p)+
+        scale_size_continuous(range = c(1, 10))+
+        theme(axis.title = element_text(face="bold", size=20), axis.text.x  = element_text(size=20), axis.text.y  = element_text(size=20), legend.text=element_text(size=16), legend.title=element_text(size=16))+
+        labs(x=input$xcol, y=input$ycol, size = test)+
+        guides(color=FALSE, size=FALSE)
+    }   
+    
+    # yes label
+    else {       
+      
+      # plot
+      ggplot(selectedData, aes(x=xcol, y=ycol, size=outcome, label = f$customer_id))+
+        theme_bw()+
+        theme(panel.grid.major = element_blank(), axis.line = element_line(colour = "black"))+
+        geom_point(alpha=0.2, color="#00AFBB", position=p)+
+        geom_text(size = 3, color = "black",position=p)+
+        scale_size_continuous(range = c(1, 10))+
+        theme(axis.title = element_text(face="bold", size=20), axis.text.x  = element_text(size=20), axis.text.y  = element_text(size=20), legend.text=element_text(size=16), legend.title=element_text(size=16))+
+        labs(x=input$xcol, y=input$ycol, size = test)+
+        guides(color=FALSE, size=FALSE)
+    }
+  })
+  
+  output$plot2 <- renderPlot({
+    f <- info()
+    
+    # selected mindprint features
+    selectedData <-  f[, c(input$xcol, input$ycol)]
+    colnames(selectedData)[1] <- "xcol"
+    colnames(selectedData)[2] <- "ycol"
+    test <- input$p
+    outcome <- f[,test]
+    
+    # combine everything into one df
+    selectedData <- cbind(selectedData, outcome, f$customer_id)    
+    
+    # set jitter position
+    p <- position_jitter(width=1,height=1,seed=2)
+    
+    # no label
+    if(input$label=='b'){       
+      
+      # plot
+      ggplot(selectedData, aes(x=xcol, y=ycol, size=outcome, label = f$customer_id))+
+        theme_bw()+
+        theme(panel.grid.major = element_blank(), axis.line = element_line(colour = "black"))+
+        geom_point(alpha=0.2, color="#00AFBB", position=p)+
+        scale_size_continuous(range = c(1, 10))+
+        theme(axis.title = element_text(face="bold", size=20), axis.text.x  = element_text(size=20), axis.text.y  = element_text(size=20), legend.text=element_text(size=16), legend.title=element_text(size=16))+
+        labs(x=input$xcol, y=input$ycol, size = test)+
+        guides(color=FALSE, size=FALSE)+
+        coord_cartesian(xlim = ranges2$x, ylim = ranges2$y, expand = FALSE)
+    }   
+    
+    # yes label
+    else {       
+      
+      # plot
+      ggplot(selectedData, aes(x=xcol, y=ycol, size=outcome, label = f$customer_id))+
+        theme_bw()+
+        theme(panel.grid.major = element_blank(), axis.line = element_line(colour = "black"))+
+        geom_point(alpha=0.2, color="#00AFBB", position=p)+
+        geom_text(size = 3, color = "black",position=p)+
+        scale_size_continuous(range = c(1, 10))+
+        theme(axis.title = element_text(face="bold", size=20), axis.text.x  = element_text(size=20), axis.text.y  = element_text(size=20), legend.text=element_text(size=16), legend.title=element_text(size=16))+
+        labs(x=input$xcol, y=input$ycol, size = test)+
+        guides(color=FALSE, size=FALSE)+
+        coord_cartesian(xlim = ranges2$x, ylim = ranges2$y, expand = FALSE)
+    }
+  })  
+
+  observe({
+    brush <- input$plot1_brush
+    if (!is.null(brush)) {
+      ranges2$x <- c(brush$xmin, brush$xmax)
+      ranges2$y <- c(brush$ymin, brush$ymax)
+      
+    } else {
+      ranges2$x <- NULL
+      ranges2$y <- NULL
+    }
+  })
+  
+}
+
+shinyApp(ui, server)
+```
